@@ -295,6 +295,8 @@ for iSub = start_sub:nSub
                     SPM_LSS = load(fullfile(tmfc.project_path,'LSS_regression_after_FIR',tmfc.subjects(iSub).name, ...
                         ['LSS_Run_' num2str(sess_num(jSess)) '_Trial_' num2str(kTrial)],'SPM.mat'));
                     SPM_LSS.SPM.xM.TH = -Inf(size(SPM_LSS.SPM.xM.TH));
+                    % FIR residuals are already scaled: no global re-scaling (gSF = 1)
+                    SPM_LSS.SPM = tmfc_no_global_rescale(SPM_LSS.SPM);
                     tmfc_parsave_SPM(fullfile(tmfc.project_path,'LSS_regression_after_FIR',tmfc.subjects(iSub).name, ...
                         ['LSS_Run_' num2str(sess_num(jSess)) '_Trial_' num2str(kTrial)],'SPM.mat'),SPM_LSS.SPM);
                     
@@ -344,6 +346,8 @@ for iSub = start_sub:nSub
                     SPM_LSS = load(fullfile(tmfc.project_path,'LSS_regression_after_FIR',tmfc.subjects(iSub).name, ...
                         ['LSS_Run_' num2str(sess_num(jSess)) '_Trial_' num2str(kTrial)],'SPM.mat'));
                     SPM_LSS.SPM.xM.TH = -Inf(size(SPM_LSS.SPM.xM.TH));
+                    % FIR residuals are already scaled: no global re-scaling (gSF = 1)
+                    SPM_LSS.SPM = tmfc_no_global_rescale(SPM_LSS.SPM);
                     tmfc_parsave_SPM(fullfile(tmfc.project_path,'LSS_regression_after_FIR',tmfc.subjects(iSub).name, ...
                         ['LSS_Run_' num2str(sess_num(jSess)) '_Trial_' num2str(kTrial)],'SPM.mat'),SPM_LSS.SPM);
 
@@ -431,4 +435,17 @@ end
 % Save SPM.mat files in parallel mode
 function tmfc_parsave_SPM(fname,SPM)
 	save(fname, 'SPM')
+end
+
+% Undo the global re-scaling of the FIR residuals
+function SPM = tmfc_no_global_rescale(SPM)
+    % spm_fmri_spm_ui applied the grand-mean scaling gSF to the residual
+    % images Res_*.nii (VY.pinfo / scl_slope / scl_inter), both for global
+    % 'None' and 'Scaling'. The FIR residuals must not be re-scaled, so the
+    % scan handles are re-read from the headers exactly as
+    % spm_fmri_spm_ui.m:285 does (exact restore, no divide-by-gSF
+    % rounding, robust for g == 0) and xGX.gSF is set to 1. Everything
+    % else (mask, TH, concatenation, outputs) is unchanged.
+    SPM.xY.VY   = spm_data_hdr_read(SPM.xY.P);
+    SPM.xGX.gSF = ones(size(SPM.xGX.gSF));
 end
