@@ -510,3 +510,22 @@ Please see: <br/>
 
 
 
+
+### LSS covariance estimation
+
+`tmfc.defaults.lss_method` selects `'exact'` (the default when absent) or
+`'pooled'` (LSS with run-pooled covariance). Exact retains per-trial covariance
+estimation. Pooled estimates one sample covariance per run and, by default,
+performs ReML and whitening for each trial. It is faster but approximate, so
+check its quality for your data. For rWLS parents, pooled uses one nuisance-model
+covariance per run and retains a separate rWLS ReML and whitening for each trial.
+LSS always runs serially; `parallel = 1` emits a warning.
+See [`evaluation/`](evaluation/) for evaluation results.
+
+For pooled LSS, `tmfc.defaults.lss_reml_warm_start = true` starts each ReML
+fit at the parent covariance parameters and, for FAST, retains the parent's
+covariance components. `tmfc.defaults.lss_reml_every = m` reuses whitening
+between fits; `m = 1` is the default and `m > 1` is experimental. Both options
+are approximate and apply only to pooled LSS. Warm start defaults to `true`
+for FAST parents and `false` otherwise; an explicit value overrides this.
+The default interval is `1`. Both options are ignored with a warning for rWLS.

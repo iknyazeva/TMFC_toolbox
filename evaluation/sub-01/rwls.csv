@@ -1,0 +1,5 @@
+method,time_s,agreement_with_main,notes
+exact,67.12,max_beta_rel_L2=4.40e-10;max_ULP=462,reuses_filtered_data_across_trials_plus_first_row_solve
+exact_data_reuse_only,88.97,zero_difference;max_ULP=0,isolates_the_data_reuse_saving
+exact_component_benchmark,87.3,saved_float32_bitwise_equal,component_protocol_two_runs
+pooled,17.10,max_beta_rel_L2=8.12e-4;min_ROI_corr=0.999906,one_run_covariance_per_trial_rWLS_ReML_and_W

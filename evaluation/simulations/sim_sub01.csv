@@ -1,0 +1,11 @@
+design,label,n_trials,n_scans,method,max_abs_dbeta,max_rel_l2,beta_series_corr_min,bsc_z_corr_min,bsc_z_mean_bias_max,sign_flips,bad_rows_jaccard,delta_auc_ab_raw,time_s,max_abs_dz
+02,"ISI 6 s, 100 trials/cond",200,706,exact,4.386e-13,4.372e-15,1.0000000,1.0000000,7.54e-16,0,1.00,+0.0e+00,not measured,not measured
+02,"ISI 6 s, 100 trials/cond",200,706,pooled,2.197e-03,2.090e-05,1.0000000,1.0000000,2.69e-06,0,1.00,+1.5e-06,not measured,not measured
+02v,"ISI 6 s, Variable HRF",200,706,exact,3.784e-13,3.753e-15,1.0000000,1.0000000,2.73e-16,0,1.00,+0.0e+00,not measured,not measured
+02v,"ISI 6 s, Variable HRF",200,706,pooled,3.177e-03,2.202e-05,1.0000000,1.0000000,8.36e-06,0,1.00,-4.6e-06,not measured,not measured
+12,"ISI 2 s, 100 trials/cond",200,308,exact,3.659e-13,3.806e-15,1.0000000,1.0000000,1.41e-16,0,1.00,+0.0e+00,not measured,not measured
+12,"ISI 2 s, 100 trials/cond",200,308,pooled,4.260e-03,3.470e-05,1.0000000,1.0000000,2.65e-06,0,1.00,-6.4e-06,not measured,not measured
+15,"ISI 12 s, 100 trials/cond",200,1317,exact,4.743e-13,4.902e-15,1.0000000,1.0000000,4.52e-16,0,1.00,+0.0e+00,not measured,not measured
+15,"ISI 12 s, 100 trials/cond",200,1317,pooled,1.630e-03,1.465e-05,1.0000000,1.0000000,1.91e-06,0,1.00,+0.0e+00,not measured,not measured
+17,"ISI 6 s, 40 trials/cond",80,287,exact,3.570e-13,3.513e-15,1.0000000,1.0000000,8.59e-16,0,1.00,+0.0e+00,not measured,not measured
+17,"ISI 6 s, 40 trials/cond",80,287,pooled,6.446e-03,5.939e-05,1.0000000,1.0000000,1.12e-05,0,1.00,-1.3e-06,not measured,not measured
