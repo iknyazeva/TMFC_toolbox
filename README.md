@@ -529,3 +529,20 @@ between fits; `m = 1` is the default and `m > 1` is experimental. Both options
 are approximate and apply only to pooled LSS. Warm start defaults to `true`
 for FAST parents and `false` otherwise; an explicit value overrides this.
 The default interval is `1`. Both options are ignored with a warning for rWLS.
+
+### gPPI noise estimation
+
+`tmfc.defaults.gppi_method` selects `'exact'` (the default when absent) or
+`'pooled'` (gPPI and gPPI-FIR with subject-pooled covariance), for the
+ROI-to-ROI analysis mode. Exact reproduces the original estimation while
+running the batch, VOI and deconvolution machinery faster; pooled replaces
+the per-seed covariance estimate with one sample covariance per subject
+(keeping per-seed ReML, whitening and solving) and is faster still, but
+approximate, so check its quality for your data. Pooled is supported for
+AR(1) parents only: pooled with analysis 1/3, with a FAST or rWLS parent, or
+with concatenated sessions errors with a specific identifier; with independent errors the
+ROI-to-ROI path fails with the same legacy error as the original routines.
+`tmfc.defaults.gppi_reml_warm_start = true` (pooled only, default `false`)
+warm-starts the per-seed ReML fits. Runs are serial; `parallel = 1` is
+unchanged behaviour. See [`evaluation/gppi/`](evaluation/gppi/) for
+evaluation results.

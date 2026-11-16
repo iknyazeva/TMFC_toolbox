@@ -84,3 +84,7 @@ results = run_lss_tests('<disposable-output>', '<main-functions>', '<spm>');
 [fast_speedup.md](fast_speedup.md). The component benchmarks and the end-to-end
 checks have different measurement protocols, as indicated in the
 tables. Reproduction commands have not been rerun for this document.
+
+gPPI acceleration: see [`gppi/`](gppi/) — parameters, timing and agreement
+tables on ds000008 sub-01 and the single-subject simulations, plus the
+reproduction notes in [`gppi/README.md`](gppi/README.md).

@@ -214,7 +214,25 @@ end
 
 % Initialize SPM
 spm('defaults','fmri');
+% Batch defaults are registered BEFORE spm_jobman('initcfg') (cfg capture).
+% Verified SPM25 semantics: spm_get_defaults mutates the global defaults
+% struct and is read dynamically at run time (spm_spm.m and
+% spm_est_non_sphericity.m: stats.maxmem/stats.resmem); nothing inside
+% spm_jobman('initcfg')/cfg_util resets them, so this once-per-call
+% registration equals the former per-ROI-loop registration
+spm_get_defaults('cmdline',true);
+spm_get_defaults('stats.resmem',tmfc.defaults.resmem);
+spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
+spm_get_defaults('stats.fmri.ufp',1);
 spm_jobman('initcfg');
+
+% ---- Pooled-Cy / warm-start options (explicit opt-in; default exact) --
+% tmfc.defaults.gppi_method:          'exact' (default) | 'pooled'
+% tmfc.defaults.gppi_reml_warm_start: logical scalar, default false.
+% Strict validation, no silent fallbacks (tmfc_gPPI_pooled_options); the
+% exact path is behaviourally unchanged when the fields are absent
+% (OPTIONS_DESIGN, Revision 2026-11-16, R4).
+[gp_pooled,gp_warm] = tmfc_gPPI_pooled_options(tmfc.defaults,'tmfc_gPPI');
 
 % Initialize parfor
 useParROI = false;
@@ -314,6 +332,133 @@ if ~useParSub
             SPM_concat(iSub) = 1;
         end
         concat(iSub).scans = SPM.nscan;
+
+        % Noise model path decided once per subject, before any batch
+        % construction (rWLS selects the estimation branch below, cvi goes
+        % into the base_spec template)
+        if strcmp(SPM.xVi.form,'wls')
+            rWLS(iSub) = 1;
+        else
+            rWLS(iSub) = 0;
+        end
+
+        % Pooled-Cy guards and whole-brain load job (gppi_method='pooled'
+        % only; the exact path never enters this block). Built here while
+        % the PARENT SPM is loaded - later per-seed loads overwrite the
+        % SPM variable (OPTIONS_DESIGN Revision R1: one concatenated BOLD
+        % pass; concat sessions are an open risk, 7.1, rejected loudly).
+        pooled_job = [];
+        if gp_pooled
+            if rWLS(iSub) == 1
+                error('tmfc_gPPI:PooledRWLSUnsupported', ...
+                    ['pooled with an rWLS parent (xVi.form==''wls'') is ' ...
+                     'not supported in this slice; robust estimation ' ...
+                     'remains the only rWLS path']);
+            end
+            if strcmpi(SPM.xVi.form,'fast')
+                error('tmfc_gPPI:PooledFastUnsupported', ...
+                    ['pooled approximation is numerically pathological ' ...
+                     'under FAST at real scale (rel ~1e6; evidence ' ...
+                     'REAL_APPROX_RESULTS section 4 / POOLED_FAST_DECISION.md); ' ...
+                     'supported noise: AR(1)']);
+            end
+            if SPM_concat(iSub) == 1
+                error('tmfc_gPPI:PooledConcatUnsupported', ...
+                    ['pooled with concatenated sessions (SPM_concat==1) ' ...
+                     'is not supported in this slice (open risk, ' ...
+                     'OPTIONS_DESIGN 7.1)']);
+            end
+            pooled_job = tmfc_gPPI_pooled_job(SPM,sess_num);
+        end
+
+        % ROI-invariant part of the gPPI fmri_spec batch, computed once per
+        % subject and cloned for each seed ROI below (exact I/O reuse: the
+        % same values the former per-ROI construction produced)
+        base_spec = struct();
+        base_spec.timing.units  = SPM.xBF.UNITS;
+        base_spec.timing.RT     = SPM.xY.RT;
+        base_spec.timing.fmri_t = SPM.xBF.T;
+        base_spec.timing.fmri_t0 = SPM.xBF.T0;
+        for kSess = 1:nSess
+            % Functional images
+            if SPM_concat(iSub) == 0
+                for image = 1:SPM.nscan(sess_num(kSess))
+                    base_spec.sess(kSess).scans{image,1} = [SPM.xY.VY(SPM.Sess(sess_num(kSess)).row(image)).fname ',' ...
+                        num2str(SPM.xY.VY(SPM.Sess(sess_num(kSess)).row(image)).n(1))];
+                end
+            else
+                for image = 1:size(SPM.xY.VY,1)
+                    base_spec.sess(kSess).scans{image,1} = [SPM.xY.VY(SPM.Sess(kSess).row(image)).fname ',' ...
+                        num2str(SPM.xY.VY(SPM.Sess(kSess).row(image)).n(1))];
+                end
+            end
+            % Conditions (including PSY regressors)
+            for cond = 1:length(SPM.Sess(sess_num(kSess)).U)
+                base_spec.sess(kSess).cond(cond).name = SPM.Sess(sess_num(kSess)).U(cond).name{1};
+                base_spec.sess(kSess).cond(cond).onset = SPM.Sess(sess_num(kSess)).U(cond).ons;
+                base_spec.sess(kSess).cond(cond).duration = SPM.Sess(sess_num(kSess)).U(cond).dur;
+                base_spec.sess(kSess).cond(cond).tmod = 0;
+                if length(SPM.Sess(sess_num(kSess)).U(cond).name)>1
+                    for PM_number = 1:length(SPM.Sess(sess_num(kSess)).U(cond).P)
+                        base_spec.sess(kSess).cond(cond).pmod(PM_number).name = SPM.Sess(sess_num(kSess)).U(cond).P(PM_number).name;
+                        base_spec.sess(kSess).cond(cond).pmod(PM_number).param = SPM.Sess(sess_num(kSess)).U(cond).P(PM_number).P;
+                        base_spec.sess(kSess).cond(cond).pmod(PM_number).poly = SPM.Sess(sess_num(kSess)).U(cond).P(PM_number).h;
+                    end
+                else
+                    base_spec.sess(kSess).cond(cond).pmod = struct('name', {}, 'param', {}, 'poly', {});
+                end
+                base_spec.sess(kSess).cond(cond).orth = SPM.Sess(sess_num(kSess)).U(cond).orth;
+            end
+            base_spec.sess(kSess).multi = {''};
+            base_spec.sess(kSess).multi_reg = {''};
+            base_spec.sess(kSess).hpf = SPM.xX.K(sess_num(kSess)).HParam;
+        end
+        base_spec.fact = struct('name', {}, 'levels', {});
+        base_spec.bases.hrf.derivs = tmfc_get_hrf_derivs(SPM);
+        base_spec.volt = 1;
+        base_spec.global = SPM.xGX.iGXcalc;
+        base_spec.mthresh = SPM.xM.gMT;
+        try
+            base_spec.mask = {SPM.xM.VM.fname};
+        catch
+            base_spec.mask = {''};
+        end
+        if strcmp(SPM.xVi.form,'i.i.d') || strcmp(SPM.xVi.form,'none')
+            base_spec.cvi = 'None';
+        elseif strcmp(SPM.xVi.form,'fast') || strcmp(SPM.xVi.form,'FAST')
+            base_spec.cvi = 'FAST';
+        else
+            base_spec.cvi = 'AR(1)';
+        end
+
+        % Preload the VOI time series once per subject and run (I/O reuse):
+        % Yraw (or Y in old VOI files) is the seed regressor in every
+        % analysis mode; the filtered/whitened Y stack is built only when
+        % the ROI-to-ROI beta matrices need it (analysis 1 or 2)
+        VOI_Yraw = cell(nSess,nROI);
+        need_Y = tmfc.defaults.analysis == 1 || tmfc.defaults.analysis == 2;
+        Y = [];
+        for kSess = 1:nSess
+            KWY = [];
+            for jROI = 1:nROI
+                VOI = fullfile(tmfc.project_path,'ROI_sets',tmfc.ROI_set(ROI_set_number).set_name,'VOIs', ...
+                    tmfc.subjects(iSub).name,['VOI_' tmfc.ROI_set(ROI_set_number).ROIs(jROI).name '_' num2str(sess_num(kSess)) '.mat']);
+                tmp = load(VOI);
+                if isfield(tmp,'Yraw')
+                    VOI_Yraw{kSess,jROI} = tmp.Yraw;
+                else
+                    VOI_Yraw{kSess,jROI} = tmp.Y;     % Backward compatibility: old VOI files contain only Y
+                end
+                if need_Y
+                    KWY(:,jROI) = tmp.Y;              % Filtered and whitened data
+                end
+                clear VOI tmp
+            end
+            if need_Y
+                Y = [Y; KWY];
+            end
+            clear KWY
+        end
     
         % Loop through ROIs
         for jROI = 1:nROI
@@ -323,44 +468,14 @@ if ~useParSub
             end
             mkdir(fullfile(tmfc.project_path,'ROI_sets',tmfc.ROI_set(ROI_set_number).set_name,'gPPI',tmfc.subjects(iSub).name,tmfc.ROI_set(ROI_set_number).ROIs(jROI).name));
 
-            % gPPI GLM batch
+            % gPPI GLM batch: clone the ROI-invariant base_spec template
+            % (built once per subject above) and add the ROI-dependent parts
+            matlabbatch{1}.spm.stats.fmri_spec = base_spec;
             matlabbatch{1}.spm.stats.fmri_spec.dir = {fullfile(tmfc.project_path,'ROI_sets',tmfc.ROI_set(ROI_set_number).set_name,'gPPI',tmfc.subjects(iSub).name,tmfc.ROI_set(ROI_set_number).ROIs(jROI).name)};
-            matlabbatch{1}.spm.stats.fmri_spec.timing.units = SPM.xBF.UNITS;
-            matlabbatch{1}.spm.stats.fmri_spec.timing.RT = SPM.xY.RT;
-            matlabbatch{1}.spm.stats.fmri_spec.timing.fmri_t = SPM.xBF.T;
-            matlabbatch{1}.spm.stats.fmri_spec.timing.fmri_t0 = SPM.xBF.T0;
             % Loop through sessions
             for kSess = 1:nSess
-                % Functional images
-                if SPM_concat(iSub) == 0
-                    for image = 1:SPM.nscan(sess_num(kSess))
-                        matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).scans{image,1} = [SPM.xY.VY(SPM.Sess(sess_num(kSess)).row(image)).fname ',' ...
-                                                                                         num2str(SPM.xY.VY(SPM.Sess(sess_num(kSess)).row(image)).n(1))];
-                    end
-                else
-                    for image = 1:size(SPM.xY.VY,1)
-                        matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).scans{image,1} = [SPM.xY.VY(SPM.Sess(kSess).row(image)).fname ',' ...
-                                                                                         num2str(SPM.xY.VY(SPM.Sess(kSess).row(image)).n(1))];
-                    end
-                end
     
-                % Conditions (including PSY regressors)
-                for cond = 1:length(SPM.Sess(sess_num(kSess)).U)
-                    matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).name = SPM.Sess(sess_num(kSess)).U(cond).name{1};
-                    matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).onset = SPM.Sess(sess_num(kSess)).U(cond).ons;
-                    matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).duration = SPM.Sess(sess_num(kSess)).U(cond).dur;
-                    matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).tmod = 0;
-                    if length(SPM.Sess(sess_num(kSess)).U(cond).name)>1
-                        for PM_number = 1:length(SPM.Sess(sess_num(kSess)).U(cond).P)
-                            matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).pmod(PM_number).name = SPM.Sess(sess_num(kSess)).U(cond).P(PM_number).name;
-                            matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).pmod(PM_number).param = SPM.Sess(sess_num(kSess)).U(cond).P(PM_number).P;
-                            matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).pmod(PM_number).poly = SPM.Sess(sess_num(kSess)).U(cond).P(PM_number).h;
-                        end
-                    else
-                        matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).pmod = struct('name', {}, 'param', {}, 'poly', {});
-                    end
-                    matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).cond(cond).orth = SPM.Sess(sess_num(kSess)).U(cond).orth;
-                end
+                % Conditions (including PSY regressors) are in base_spec
     
                 % Add PPI regressors
                 jConds = find(cond_in_sess(kSess,:));
@@ -424,16 +539,8 @@ if ~useParSub
     
                 % Add PHYS regressors
                 nPPI_sess = sum(cond_in_sess(kSess,:));
-                VOI = fullfile(tmfc.project_path,'ROI_sets',tmfc.ROI_set(ROI_set_number).set_name,'VOIs', ...
-                      tmfc.subjects(iSub).name, ['VOI_' tmfc.ROI_set(ROI_set_number).ROIs(jROI).name '_' num2str(sess_num(kSess)) '.mat']);
-                tmp = load(VOI);
                 matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).regress(nPPI_sess+1).name = ['Seed_' tmfc.ROI_set(ROI_set_number).ROIs(jROI).name];
-                if isfield(tmp,'Yraw')
-                    matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).regress(nPPI_sess+1).val = tmp.Yraw;  % Use contrast-adjusted, unfiltered and unwhitened VOI time series 
-                else
-                    matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).regress(nPPI_sess+1).val = tmp.Y;     % Backward compatibility: old VOI files contain only Y (contrast-adjusted, filtered and whitened time series)
-                end
-                clear VOI tmp
+                matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).regress(nPPI_sess+1).val = VOI_Yraw{kSess,jROI};  % Preloaded contrast-adjusted, unfiltered and unwhitened VOI time series (Y in old VOI files)
                 
                 % Confounds       
                 for conf = 1:length(SPM.Sess(sess_num(kSess)).C.name)
@@ -446,31 +553,13 @@ if ~useParSub
                 matlabbatch{1}.spm.stats.fmri_spec.sess(kSess).hpf = SPM.xX.K(sess_num(kSess)).HParam;            
             end
     
-            matlabbatch{1}.spm.stats.fmri_spec.fact = struct('name', {}, 'levels', {});
-            matlabbatch{1}.spm.stats.fmri_spec.bases.hrf.derivs = tmfc_get_hrf_derivs(SPM);
-            matlabbatch{1}.spm.stats.fmri_spec.volt = 1;
-            matlabbatch{1}.spm.stats.fmri_spec.global = SPM.xGX.iGXcalc;
-            matlabbatch{1}.spm.stats.fmri_spec.mthresh = SPM.xM.gMT;
+            % (fact, HRF bases, volt, global, mthresh are in base_spec)
         
-            try
-                matlabbatch{1}.spm.stats.fmri_spec.mask = {SPM.xM.VM.fname};
-            catch
-                matlabbatch{1}.spm.stats.fmri_spec.mask = {''};
-            end
+            % (mask try/catch is in base_spec)
         
-            if strcmp(SPM.xVi.form,'i.i.d') || strcmp(SPM.xVi.form,'none')
-                matlabbatch{1}.spm.stats.fmri_spec.cvi = 'None';
-            elseif strcmp(SPM.xVi.form,'fast') || strcmp(SPM.xVi.form,'FAST')
-                matlabbatch{1}.spm.stats.fmri_spec.cvi = 'FAST';
-            else
-                matlabbatch{1}.spm.stats.fmri_spec.cvi = 'AR(1)';
-            end
+            % (cvi is in base_spec)
         
-            if strcmp(SPM.xVi.form,'wls')
-                rWLS(iSub) = 1;
-            else
-                rWLS(iSub) = 0;
-            end
+            % (rWLS decided once per subject, see above)
     
             batch{jROI} = matlabbatch;
             clear matlabbatch PPI   
@@ -478,13 +567,9 @@ if ~useParSub
         
         % ====================== ROIs: sequential =========================
         if ~useParROI
+            % initcfg and batch defaults are done once per call (see the
+            % initialization above); nothing in this loop resets them
             for jROI = 1:nROI
-                spm('defaults','fmri');
-                spm_jobman('initcfg');
-                spm_get_defaults('cmdline',true);
-                spm_get_defaults('stats.resmem',tmfc.defaults.resmem);
-                spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-                spm_get_defaults('stats.fmri.ufp',1);
                 spm_jobman('run',batch{jROI});
                 % Concatenated sessions
                 if SPM_concat(iSub) == 1
@@ -538,13 +623,9 @@ if ~useParSub
     
             % ====================== ROIs: sequential =====================
             if ~useParROI
+                % initcfg and batch defaults are done once per call (see
+                % the initialization above); nothing in this loop resets them
                 for jROI = 1:nROI
-                    spm('defaults','fmri');
-                    spm_jobman('initcfg');
-                    spm_get_defaults('cmdline',true);
-                    spm_get_defaults('stats.resmem',tmfc.defaults.resmem);
-                    spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-                    spm_get_defaults('stats.fmri.ufp',1);
                     % Check for rWLS
                     if rWLS(iSub) == 0
                         spm_jobman('run',batch{jROI});
@@ -582,18 +663,7 @@ if ~useParSub
                 end
             end
     
-            % ROI-to-ROI
-            Y = [];
-            for kSess = 1:nSess
-                for jROI = 1:nROI
-                    VOI = fullfile(tmfc.project_path,'ROI_sets',tmfc.ROI_set(ROI_set_number).set_name,'VOIs', ... 
-                          tmfc.subjects(iSub).name,['VOI_' tmfc.ROI_set(ROI_set_number).ROIs(jROI).name '_' num2str(sess_num(kSess)) '.mat']);
-                    KWY(:,jROI) = load(deblank(VOI(1,:))).Y; % Filtered and whitened data
-                    clear VOI
-                end
-                Y = [Y; KWY];
-                clear KWY
-            end
+            % ROI-to-ROI (Y preloaded once per subject, see above)
             
             beta = [];
     
@@ -623,20 +693,40 @@ if ~useParSub
     
         % ROI-to-ROI analysis only
         if tmfc.defaults.analysis == 2
-            Y = [];
-            for kSess = 1:nSess
-                for jROI = 1:nROI
-                    VOI = fullfile(tmfc.project_path,'ROI_sets',tmfc.ROI_set(ROI_set_number).set_name,'VOIs', ... 
-                          tmfc.subjects(iSub).name,['VOI_' tmfc.ROI_set(ROI_set_number).ROIs(jROI).name '_' num2str(sess_num(kSess)) '.mat']);
-                    KWY(:,jROI) = load(deblank(VOI(1,:))).Y;
-                    clear VOI
-                end
-                Y = [Y; KWY];
-                clear KWY
-            end 
+            % ROI-to-ROI analysis only (Y preloaded once per subject, see above)
     
             beta = [];
     
+            % Pooled: shared run-pooled Cy once per subject (+ optional
+            % warm h0 cache from a cold first-seed ReML); the exact path
+            % below is unchanged. h0 is computed BEFORE the seed loop so
+            % serial and parfor share identical warm semantics (R4).
+            Cy = []; h0 = []; keep = [];
+            if gp_pooled
+                spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
+                SPM1 = load(fullfile(tmfc.project_path,'ROI_sets', ...
+                    tmfc.ROI_set(ROI_set_number).set_name,'gPPI', ...
+                    tmfc.subjects(iSub).name, ...
+                    tmfc.ROI_set(ROI_set_number).ROIs(1).name,'SPM.mat')).SPM;
+                if isfield(SPM1.xX,'W')
+                    SPM1.xX  = rmfield(SPM1.xX,'W');
+                end
+                if isfield(SPM1.xVi,'V')
+                    SPM1.xVi = rmfield(SPM1.xVi,'V');
+                end
+                [Cy,h0,keep,pinfo] = tmfc_gPPI_pooled_prepare(pooled_job,SPM1,Y, ...
+                    spm_get_defaults('stats.fmri.ufp'),gp_warm);
+                fprintf('[gPPI] pooled: sub %s runs=%d pooledVox=%d warm=%d\n', ...
+                    tmfc.subjects(iSub).name,numel(sess_num),pinfo.nPool,gp_warm);
+                pooled_dir = fullfile(tmfc.project_path,'ROI_sets', ...
+                    tmfc.ROI_set(ROI_set_number).set_name,'gPPI', ...
+                    'GLM_batches','pooled');
+                if ~exist(pooled_dir,'dir'), mkdir(pooled_dir); end
+                save(fullfile(pooled_dir, ...
+                    [tmfc.subjects(iSub).name '_pooled_Cy.mat']),'pinfo');
+                clear SPM1 pooled_dir
+            end
+
             if ~useParROI
                 for jROI = 1:nROI
                     SPM = []; xX = []; xVi = []; W = []; xKXs = []; pKX = [];
@@ -649,18 +739,24 @@ if ~useParSub
                         SPM.xVi = rmfield(SPM.xVi,'V');
                     end
                     spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-                    % Check for rWLS
-                    if rWLS(iSub) == 0
-                        xVi = spm_est_non_sphericity(SPM);
+                    if gp_pooled
+                        % Shared run-pooled Cy + optional warm h0 (built
+                        % above); ReML block, W and pKX*Y live in the helper
+                        [beta(:,:,jROI),W] = tmfc_gPPI_pooled_estimate(SPM,Y,Cy,h0,keep);
                     else
-                        xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+                        % Check for rWLS
+                        if rWLS(iSub) == 0
+                            xVi = spm_est_non_sphericity(SPM);
+                        else
+                            xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+                        end
+                        W           = spm_sqrtm(spm_inv(xVi.V));
+                        W           = W.*(abs(W) > 1e-6);
+                        xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
+                        xKXs.X      = full(xKXs.X);
+                        pKX         = spm_sp('x-',xKXs);
+                        beta(:,:,jROI)        = pKX*Y;
                     end
-                    W           = spm_sqrtm(spm_inv(xVi.V));
-                    W           = W.*(abs(W) > 1e-6);
-                    xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
-                    xKXs.X      = full(xKXs.X);
-                    pKX         = spm_sp('x-',xKXs);
-                    beta(:,:,jROI)        = pKX*Y;
                 end
             else
                 parfor jROI = 1:nROI
@@ -674,18 +770,25 @@ if ~useParSub
                         SPM.xVi = rmfield(SPM.xVi,'V');
                     end
                     spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-                    % Check for rWLS
-                    if rWLS(iSub) == 0
-                        xVi = spm_est_non_sphericity(SPM);
+                    if gp_pooled
+                        % Shared run-pooled Cy + optional warm h0 (built
+                        % above; broadcast read-only into the workers);
+                        % ReML block, W and pKX*Y live in the helper
+                        [beta(:,:,jROI),W] = tmfc_gPPI_pooled_estimate(SPM,Y,Cy,h0,keep);
                     else
-                        xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+                        % Check for rWLS
+                        if rWLS(iSub) == 0
+                            xVi = spm_est_non_sphericity(SPM);
+                        else
+                            xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+                        end
+                        W           = spm_sqrtm(spm_inv(xVi.V));
+                        W           = W.*(abs(W) > 1e-6);
+                        xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
+                        xKXs.X      = full(xKXs.X);
+                        pKX         = spm_sp('x-',xKXs);
+                        beta(:,:,jROI)        = pKX*Y;
                     end
-                    W           = spm_sqrtm(spm_inv(xVi.V));
-                    W           = W.*(abs(W) > 1e-6);
-                    xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
-                    xKXs.X      = full(xKXs.X);
-                    pKX         = spm_sp('x-',xKXs);
-                    beta(:,:,jROI)        = pKX*Y;
                 end
             end
     
@@ -710,15 +813,11 @@ if ~useParSub
             end
     
             SPM = load(fullfile(tmfc.project_path,'ROI_sets',tmfc.ROI_set(ROI_set_number).set_name,'gPPI',tmfc.subjects(iSub).name,tmfc.ROI_set(ROI_set_number).ROIs(1).name,'SPM.mat')).SPM;
-            
+
             if ~useParROI
+                % initcfg and batch defaults are done once per call (see
+                % the initialization above); nothing in this loop resets them
                 for jROI = 1:nROI
-                    spm('defaults','fmri');
-                    spm_jobman('initcfg');
-                    spm_get_defaults('cmdline',true);
-                    spm_get_defaults('stats.resmem',tmfc.defaults.resmem);
-                    spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-                    spm_get_defaults('stats.fmri.ufp',1);
                     % Check for rWLS
                     if rWLS(iSub) == 0
                         spm_jobman('run',batch{jROI});
@@ -893,6 +992,33 @@ function ok = tmfc_gPPI_one_sub(tmfc,ROI_set_number,iSub,cond_list,nCond,nROI)
     % Check rWLS
     rWLS = 0;
     if strcmp(SPM.xVi.form,'wls'), rWLS = 1; end
+
+    % Pooled-Cy options (one_sub flow; same contract as the multi-subject
+    % path) and whole-brain load job while the parent SPM is in scope
+    [gp_pooled,gp_warm] = tmfc_gPPI_pooled_options(tmfc.defaults,'tmfc_gPPI');
+    pooled_job = [];
+    if gp_pooled
+        if rWLS == 1
+            error('tmfc_gPPI:PooledRWLSUnsupported', ...
+                ['pooled with an rWLS parent (xVi.form==''wls'') is not ' ...
+                 'supported in this slice; robust estimation remains the ' ...
+                 'only rWLS path']);
+        end
+        if strcmpi(SPM.xVi.form,'fast')
+            error('tmfc_gPPI:PooledFastUnsupported', ...
+                ['pooled approximation is numerically pathological ' ...
+                 'under FAST at real scale (rel ~1e6; evidence ' ...
+                 'REAL_APPROX_RESULTS section 4 / POOLED_FAST_DECISION.md); ' ...
+                 'supported noise: AR(1)']);
+        end
+        if SPM_concat == 1
+            error('tmfc_gPPI:PooledConcatUnsupported', ...
+                ['pooled with concatenated sessions (SPM_concat==1) is ' ...
+                 'not supported in this slice (open risk, OPTIONS_DESIGN ' ...
+                 '7.1)']);
+        end
+        pooled_job = tmfc_gPPI_pooled_job(SPM,sess_num);
+    end
     
     % Loop through ROIs
     for jROI = 1:nROI
@@ -1158,6 +1284,35 @@ function ok = tmfc_gPPI_one_sub(tmfc,ROI_set_number,iSub,cond_list,nCond,nROI)
         end 
 
         beta = [];
+
+        % Pooled: shared run-pooled Cy once (+ optional warm h0 cache);
+        % exact path unchanged (see the multi-subject branch above)
+        Cy = []; h0 = []; keep = [];
+        if gp_pooled
+            spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
+            SPM1 = load(fullfile(tmfc.project_path,'ROI_sets', ...
+                tmfc.ROI_set(ROI_set_number).set_name,'gPPI', ...
+                tmfc.subjects(iSub).name, ...
+                tmfc.ROI_set(ROI_set_number).ROIs(1).name,'SPM.mat')).SPM;
+            if isfield(SPM1.xX,'W')
+                SPM1.xX  = rmfield(SPM1.xX,'W');
+            end
+            if isfield(SPM1.xVi,'V')
+                SPM1.xVi = rmfield(SPM1.xVi,'V');
+            end
+            [Cy,h0,keep,pinfo] = tmfc_gPPI_pooled_prepare(pooled_job,SPM1,Y, ...
+                spm_get_defaults('stats.fmri.ufp'),gp_warm);
+            fprintf('[gPPI] pooled: sub %s runs=%d pooledVox=%d warm=%d\n', ...
+                tmfc.subjects(iSub).name,numel(sess_num),pinfo.nPool,gp_warm);
+            pooled_dir = fullfile(tmfc.project_path,'ROI_sets', ...
+                tmfc.ROI_set(ROI_set_number).set_name,'gPPI', ...
+                'GLM_batches','pooled');
+            if ~exist(pooled_dir,'dir'), mkdir(pooled_dir); end
+            save(fullfile(pooled_dir, ...
+                [tmfc.subjects(iSub).name '_pooled_Cy.mat']),'pinfo');
+            clear SPM1 pooled_dir
+        end
+
         for jROI = 1:nROI
             SPM = []; xX = []; xVi = []; W = []; xKXs = []; pKX = [];
             SPM = load(fullfile(tmfc.project_path,'ROI_sets',tmfc.ROI_set(ROI_set_number).set_name,'gPPI',tmfc.subjects(iSub).name,tmfc.ROI_set(ROI_set_number).ROIs(jROI).name,'SPM.mat')).SPM;
@@ -1169,18 +1324,24 @@ function ok = tmfc_gPPI_one_sub(tmfc,ROI_set_number,iSub,cond_list,nCond,nROI)
                 SPM.xVi = rmfield(SPM.xVi,'V');
             end
             spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-            % Check for rWLS
-            if rWLS == 0
-                xVi = spm_est_non_sphericity(SPM);
+            if gp_pooled
+                % Shared run-pooled Cy + optional warm h0 (built above);
+                % ReML block, W and pKX*Y live in the helper
+                [beta(:,:,jROI),W] = tmfc_gPPI_pooled_estimate(SPM,Y,Cy,h0,keep);
             else
-                xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+                % Check for rWLS
+                if rWLS == 0
+                    xVi = spm_est_non_sphericity(SPM);
+                else
+                    xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+                end
+                W           = spm_sqrtm(spm_inv(xVi.V));
+                W           = W.*(abs(W) > 1e-6);
+                xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
+                xKXs.X      = full(xKXs.X);
+                pKX         = spm_sp('x-',xKXs);
+                beta(:,:,jROI)        = pKX*Y;
             end
-            W           = spm_sqrtm(spm_inv(xVi.V));
-            W           = W.*(abs(W) > 1e-6);
-            xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
-            xKXs.X      = full(xKXs.X);
-            pKX         = spm_sp('x-',xKXs);
-            beta(:,:,jROI)        = pKX*Y;
         end
 
         % Save PPI beta matrices

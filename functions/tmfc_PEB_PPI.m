@@ -183,6 +183,24 @@ for s = sess_num(:)'
     jConds = conds_by_sess{s};
     nCond_s = numel(jConds);
 
+    % Defensive skip: a run without selected conditions must not pay for
+    % deconvolution (cannot happen with strict/repeated lists today)
+    if isempty(jConds)
+        continue
+    end
+
+    % --------------------------------------------------------------
+    % Deconvolution (PEB) for each ROI (invariant to condition: Y, xb and P
+    % depend only on ROI x run, so it is computed once and reused below)
+    % --------------------------------------------------------------
+    xn_all = cell(1, nROI);
+    for kROI = 1:nROI
+        Y = Yall{1,kROI};
+        C  = spm_PEB(Y, P);
+        xn = xb * C{2}.E(1:N);
+        xn_all{1,kROI} = spm_detrend(xn);
+    end
+
     % --------------------------------------------------------------
     % Compute PPI for each (cond, ROI)
     % --------------------------------------------------------------
@@ -209,15 +227,12 @@ for s = sess_num(:)'
         for kROI = 1:nROI
 
             roiName = ROIset.ROIs(kROI).name;
-            Y = Yall{1,kROI};
 
             fprintf('[PPI] Sub %02d/%02d | Run %02d/%02d | Cond %02d/%02d | ROI %03d/%03d (%s)\n', ...
                 iSub, nSub, s, maxSess, jCond, nCond, kROI, nROI, roiName);
 
-            % Deconvolution (PEB)
-            C  = spm_PEB(Y, P);
-            xn = xb * C{2}.E(1:N);
-            xn = spm_detrend(xn);
+            % Deconvolved neural signal, hoisted per ROI x run above (M1)
+            xn = xn_all{1,kROI};
 
             % Multiply psychological variable by neural signal (microtime)
             PSYxn = PSY .* xn;
@@ -239,7 +254,7 @@ for s = sess_num(:)'
         end
     end
 
-    clear xb Hxb X0 Q W P Yall
+    clear xb Hxb X0 Q W P Yall xn_all
 end
 end
 

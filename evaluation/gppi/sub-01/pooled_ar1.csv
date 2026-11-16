@@ -1,0 +1,3 @@
+branch,exact_s,pooled_s,pooled_ratio,warm_s,warm_ratio,worst_rel_max_pooled,worst_rel_max_warm
+gPPI,70.84,40.1,1.77,37.5,1.89,4.30e-3,4.26e-3
+gPPI-FIR,68.89,36.7,1.88,43.1,1.60,2.48e-3,2.94e-3
