@@ -4,12 +4,20 @@
 
 `accelerated_gppi` estimates the same gPPI and gPPI-FIR models as `main`
 faster using the `exact` method (the only one in this delivery; a pooled
-approximation existed pre-removal — see the historical sections). The acceleration covers
-the whole path: VOI extraction, PPI regressor construction (fewer
-`spm_PEB` deconvolution calls), and the per-ROI batch estimation in
-`tmfc_gPPI` / `tmfc_gPPI_FIR` (batch template built once per subject, VOI
-series read once, estimation loop restructured). Public interfaces and
-output files are unchanged; runs are serial, without parallel workers.
+approximation existed pre-removal -- see the historical sections). The
+acceleration covers the per-ROI batch estimation in `tmfc_gPPI` /
+`tmfc_gPPI_FIR` (batch initialisation and ROI-invariant design template
+once per call/subject, VOI series read once, per-seed cloning) and the
+`spm_PEB` deconvolution call pattern in `tmfc_PEB_PPI` (hoisted out of
+the condition loop; call counts per fixture reduced from one per
+condition-run to one per run). `tmfc_PPI` and `tmfc_VOI` themselves are
+unchanged from the branch base (verified by diff); the PPI branch timing
+difference below is consistent with the changed `spm_PEB` call pattern,
+while the VOI branch differences may reflect run-to-run and cache
+variability (inference from identical source; no repeated measurements
+were taken; no speedup mechanism is claimed for VOI).
+Public interfaces and output files are unchanged; runs are serial,
+without parallel workers.
 
 On real data (ds000008 sub-01, 9 ROIs, serial) the exact method reproduces
 `main` exactly as measured (relative max and L2 difference 0) while running
@@ -19,17 +27,61 @@ synthetic calibration the gPPI branch is 3.86x faster. Historically
 (worst relative deviation 4.3e-3) with a further 1.77x (gPPI) and 1.88x
 (gPPI-FIR) branch speedup, but deviated about 10% (relative L2) on the
 single-voxel-ROI simulations and was pathological under FAST; see the
-historical sections — pooled is NOT part of this delivery.
+historical sections -- pooled is NOT part of this delivery.
+
+## What is accelerated and how (vs the branch base `3955863`)
+
+Only three functions changed; `tmfc_PPI.m`, `tmfc_VOI.m` and the rest of
+`functions/` are byte-identical to the base.
+
+1. **Batch machinery built once instead of per-ROI** (`tmfc_gPPI.m`,
+   `tmfc_gPPI_FIR.m`): `spm('defaults')` + `spm_get_defaults`
+   registrations and `spm_jobman('initcfg')` run once per call
+   (previously inside the per-ROI loop); the ROI-invariant part of the
+   `fmri_spec` batch (timing, scans, conditions, nuisance regressors,
+   HPF, basis set, masking/noise-model fields) is captured once per
+   subject as a `base_spec` template and cloned per seed ROI, adding only
+   the seed-dependent PPI/seed regressors and output directory.
+   Batch semantics are preserved: SPM25 reads the registered defaults
+   dynamically at run time, and nothing inside `initcfg`/`cfg_util`
+   resets them (verified at the source level; the 22-case validation
+   reproduces `main` exactly).
+2. **VOI series read once per subject** (`tmfc_gPPI.m`, `tmfc_gPPI_FIR.m`):
+   the per-run VOI `.mat` files are loaded once into `VOI_Yraw` (seed
+   regressor, all analyses) and -- for the analysis modes that need the
+   beta stack -- `Y` (filtered series), instead of one `load` per ROI in
+   the estimation loop. Old-style VOI files (only `Y`, no `Yraw`) are
+   still accepted through the documented fallback.
+3. **PEB deconvolution hoisted out of the condition loop**
+   (`tmfc_PEB_PPI.m`): the deconvolution inputs (`Y`, basis `xb`,
+   neural `P`) depend only on ROI x run, not on the condition, so the
+   per-ROI result is computed once and reused for every condition; a
+   run with no selected conditions now skips the call entirely
+   (defensive; cannot occur with the current strict/repeated lists).
+   The estimator itself (`spm_PEB`) is unchanged -- the measured gain is
+   the reduced call count (one per run instead of one per
+   condition-run); no per-call speedup is claimed.
+
+The noise-model branch (`spm_est_non_sphericity` vs the robust rWLS
+helpers) and everything downstream of the beta computation (matrix
+saving, beta-image copying, output names, batch `.mat` contents after
+path normalisation) are unchanged; the exact code path is
+preserved, and the agreement tables below show relative max and L2 = 0
+on every verified case.
+
+The removed `pooled` method reused the LSS machinery pattern
+(`tmfc_LSS_pooled_cy`/`_estimate` conventions) for the covariance
+computation; see the historical section.
 
 ## Parameters and usage
 
-This delivery is **exact-only** (owner decision 2026-11-17). The default
+This delivery is **exact-only**. The default
 and only estimation method is `exact`: identical numerics to `main`,
 faster. The former `pooled` and warm-start options were REMOVED from the
 code; their full implementation is preserved in the branch history
 (commit `3dc8823`, removed on top of it). Previously accepted option
 values are rejected EXPLICITLY at the very top of both functions, before
-any other configuration access, IO or SPM initialisation — no silent
+any other configuration access, IO or SPM initialisation -- no silent
 fallback:
 
 - `tmfc.defaults.gppi_method` present and not `'exact'` errors
@@ -46,16 +98,18 @@ tmfc_gPPI_FIR(tmfc);
 
 Independent-error (`None`) parents still fail inside analysis 2 with the
 same legacy error as `main` (SPM25 non-sphericity estimation requires
-covariance components a `None` parent does not have — pre-existing
+covariance components a `None` parent does not have -- pre-existing
 analysis-2 limitation, unchanged).
 
-## What the pooled method approximated (REMOVED — historical context)
+## What the pooled method approximated (REMOVED -- historical context)
 
 The numbers in this section and in the pooled rows of the tables below
 were measured on the PRE-REMOVAL code (commits `3dc8823`/`9d564bb`,
-option still present). They are kept as research context and do NOT
-validate the exact-only build of this working tree (which has not been
-re-run).
+option still present). They are kept as research context and refer to
+the pre-removal code, not to the delivered exact-only build: that
+build's accuracy was re-verified against `main` on the 22-case fixture
+matrix and the PEB fixtures (relative max and L2 = 0), but its branch
+timings were not re-measured.
 
 In analysis 2 the exact path estimates the noise operator per seed ROI:
 for each seed it strips the previous whitening, calls SPM's
@@ -67,7 +121,7 @@ subject: it builds a nuisance-only design (the seed design minus the PPI
 and seed-regressor columns; FIR condition regressors stay), selects a
 voxel pool with an F threshold, and accumulates `Y*Y'` of the selected,
 variance-scaled raw time series over the concatenated timeline of all
-analyzed runs — one pool and one `Cy` per subject, shared across seeds,
+analyzed runs -- one pool and one `Cy` per subject, shared across seeds,
 including cross-run blocks. The per-seed ReML estimation, whitening and
 solving are kept (`tmfc_gPPI_pooled_estimate`), so only the covariance
 input to ReML changes. The estimate is approximate by design.
@@ -76,8 +130,8 @@ input to ReML changes. The estimate is approximate by design.
 
 Exact rows were measured on earlier validated source states of the
 accelerated branch (per-start snapshots); the delivered exact-only build
-(commit `f184cd66`) matches `main` exactly on the 22-case validation
-matrix, but its branch timings have not been re-measured — treat the
+(commit `f184cd66`) matches `main` to relative max and L2 = 0 on the 22-case validation
+matrix, but its branch timings have not been re-measured -- treat the
 speedups below as properties of the tested earlier versions.
 
 Exact method vs `main`, per branch (no totals across branches):
@@ -135,16 +189,16 @@ all measured 0 unless stated):
 |---|---|---|
 | PEB deconvolution hoist | 3 cases (strict, repeated, centering-off) | rel max/L2 = 0; `spm_PEB` calls 10/12/8 -> 4 per fixture (2 ROIs x 2 runs) |
 | Analysis 2 (ROI-to-ROI) | gPPI + gPPI-FIR x AR(1)/FAST/rWLS parents | numeric PASS, rel max/L2 = 0 |
-| Analysis 2, independent errors (`None`) | both methods | main's legacy estimation failure reproduced identically (accepted legacy restriction, owner-approved); NOT a numerical output agreement |
+| Analysis 2, independent errors (`None`) | both methods | main's legacy estimation failure reproduced identically (accepted legacy restriction); NOT a numerical output agreement |
 | Analysis 1 and 3 (seed-to-voxel) | both methods x AR(1) and `None` parents | numeric PASS, rel max/L2 = 0 |
 | Analysis 1/3 x FAST or rWLS parents | 8 cells (2 methods x 2 analyses x 2 noise models), executed in the final validation launch | numeric PASS, rel max/L2 = 0 |
 
 Fixture coverage after the final validation launch spans all four noise
 models in analysis 1/3 (AR(1), FAST, rWLS via fixtures plus independent
 errors via the None a1/a3 cases) for both methods, in addition to the
-full analysis-2 matrix. The remaining scope limit is analysis 2 with
+analysis-2 matrix (independent-error parents excepted). The remaining scope limit is analysis 2 with
 independent-error (`None`) parents: there the legacy estimation failure
-of `main` is reproduced identically — an accepted legacy restriction,
+of `main` is reproduced identically -- an accepted legacy restriction,
 not a numerical output agreement.
 
 Provenance of the exact-equivalence evidence: the historical real-data
@@ -168,7 +222,7 @@ Pooled vs exact (report-only, no gate):
 |---|---|---|---|
 | Real AR(1), 4 matrix blocks | 4.30e-3 | 3.19e-3 | pooled; warm start 4.26e-3 |
 | Synthetic Sub-1 (4 designs) | see `simulations/` | 0.076 - 0.116 (off-diagonal rel L2) | Pearson r >= 0.995 both forms; sign flips among |exact|>0.1: at most 4 |
-| Real FAST | 8.6e+5 (gPPI), ~3e+2 (FIR) | same order | PATHOLOGICAL — pooled with FAST parents is guarded off |
+| Real FAST | 8.6e+5 (gPPI), ~3e+2 (FIR) | same order | PATHOLOGICAL -- pooled with FAST parents is guarded off |
 
 ## Synthetic single subject (designs 01/01v/12/13, subject 1)
 
@@ -198,8 +252,10 @@ exact stay within 0.0026.
   the same exact code on identical inputs (verified bit-identical inputs),
   not a same-start pairing.
 - rWLS parents: exact is validated on the analysis-2 fixtures above;
-  pooled is not supported. Analysis 1/3 with rWLS (and FAST) parents were
-  not run (see the coverage table).
+  pooled is not supported (removed). Analysis 1/3 with rWLS (and FAST)
+  parents passed the fixture accuracy gate (8/8 cells, rel max and
+  L2 = 0; see the coverage table); real-data timing for these parents
+  is not measured.
 
 ## Why pooled agrees less on simulations
 

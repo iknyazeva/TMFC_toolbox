@@ -231,7 +231,7 @@ for s = sess_num(:)'
             fprintf('[PPI] Sub %02d/%02d | Run %02d/%02d | Cond %02d/%02d | ROI %03d/%03d (%s)\n', ...
                 iSub, nSub, s, maxSess, jCond, nCond, kROI, nROI, roiName);
 
-            % Deconvolved neural signal, hoisted per ROI x run above (M1)
+            % Deconvolved neural signal, hoisted per ROI x run above
             xn = xn_all{1,kROI};
 
             % Multiply psychological variable by neural signal (microtime)

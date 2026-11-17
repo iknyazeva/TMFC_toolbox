@@ -1,8 +1,6 @@
 function test_gppi_option_guards(functions_dir)
 % Preflight test for the exact-only option guards of tmfc_gPPI and
-% tmfc_gPPI_FIR (owner review 2, 2026-11-17). SOURCE-READY ONLY: NEVER RUN
-% in its authoring unit (zero MATLAB); it executes in the approved
-% validation launch. GPL-3.0-or-later.
+% tmfc_gPPI_FIR. GPL-3.0-or-later.
 %
 % The guards sit at the very top of both functions, BEFORE any tmfc field
 % access, IO, directory creation or SPM initialisation. Therefore the two

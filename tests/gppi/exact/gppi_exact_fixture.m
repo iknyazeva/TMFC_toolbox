@@ -27,15 +27,15 @@ function [cs,fx] = gppi_exact_fixture(name,fxdir)
 %   ar1_s2v    - analysis 3 (single seed-to-voxel, small analysis mask)
 %   ar1_a1     - analysis 1 (seed-to-voxel + ROI-to-ROI)
 %   fast_s2v fast_a1 rwls_s2v rwls_a1 and fir_ mirrors - the eight
-%   FAST/rWLS x analysis 1/3 cells (AC1 coverage completion; seeds 12/13
-%   per the s2v/a1 convention; SOURCE-READY, NOT RUN)
+%   FAST/rWLS x analysis 1/3 cells (completing the coverage matrix; seeds 12/13
+%   per the s2v/a1 convention; executed, PASS)
 %   none_s2v none_a1 fir_none_s2v fir_none_a1 - cvi 'None' via analysis
-%                1/3 (owner-approved policy: a1/a3 estimate Classical via
+%                1/3 (policy for a1/a3: they estimate Classical via
 %                spm_jobman and never call spm_est_non_sphericity; the
 %                analysis-2 None failure is a documented legacy limit)
 %   ar1_oldvoi - all VOIs new-style (Yraw present everywhere)
 %
-% STATUS: executed, PASS (evaluation/gppi/GPPI_EXACT_TESTS.md). rWLS case estimates the parent with
+% STATUS: executed, PASS (evaluation/gppi/REPORT.md, Agreement). rWLS case estimates the parent with
 % tmfc_spm_rwls_spm (real rWLS, xVi.form='wls'; NOT renamed AR/None).
 %
 % License: GPL-3.0-or-later
@@ -163,7 +163,7 @@ spm_jobman('run',mb);
 % (pattern of tests/lss/lss_rwls_fixture.m; NOT renamed AR/None).
 % tmfc_spm_rwls_spm.m:350-355 raises an INTERACTIVE stop|continue
 % prompt (spm_input -> questdlg) when SPM.swd already contains
-% estimation files, which matlab -batch cannot show (s04/M4 failure).
+% estimation files, which matlab -batch cannot show.
 % Fix: re-estimate in a CLEAN sibling directory holding ONLY the
 % provisional SPM.mat (design + absolute data paths): the guard never
 % fires, nothing is overwritten, and the provisional estimation in

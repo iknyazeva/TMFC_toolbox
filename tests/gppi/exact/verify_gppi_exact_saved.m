@@ -21,7 +21,7 @@ function results = verify_gppi_exact_saved(out_root,cases)
 % counts, names, shapes, NaN patterns, intentional NaN diagonals;
 % rel max AND rel L2 <= 1e-3 (no ULP/bitwise gate).
 %
-% STATUS: executed, PASS (evaluation/gppi/GPPI_EXACT_TESTS.md).
+% STATUS: executed, PASS (evaluation/gppi/REPORT.md, Agreement).
 %
 % License: GPL-3.0-or-later
 

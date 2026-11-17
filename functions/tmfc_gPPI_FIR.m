@@ -147,10 +147,10 @@ function [sub_check,contrasts] = tmfc_gPPI_FIR(tmfc,ROI_set_number,start_sub)
 % License: GPL-3.0-or-later
 % Contact: masharipov@ihb.spb.ru
 
-%% ---- option guard: exact only (owner decision 2026-11-17; placed at the
+%% ---- option guard: exact only (placed at the
 %% top, before ANY tmfc access, IO or SPM initialisation) ----
 % The pooled-Cy and warm-start options were removed from this delivery;
-% the full implementation remains in the branch history (commit 3dc8823).
+% the full implementation remains in the branch history.
 % Previously accepted values are rejected EXPLICITLY, no silent fallback.
 % A missing/non-struct tmfc.defaults falls through unchanged (the legacy
 % validation later in the file reports it as before).

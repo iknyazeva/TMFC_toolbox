@@ -1,16 +1,14 @@
 # gPPI acceleration — PEB hoist: source + fixtures (EXECUTED: PASS)
 
 Status: **EXECUTED 2026-11-16 — PASS (all 3 cases, all gates).** See
-[`../../../evaluation/gppi/PEB_EXACT_TESTS.md`](../../../evaluation/gppi/PEB_EXACT_TESTS.md)
-and `peb_exact_results.json` for the durable report, ledger and evidence
-links. Summary: strict/repeated/centering_off → identical file names/counts
-(10/12/8), finite, rel max = rel L2 = 0 (bitwise identical, gate ≤1e-3),
+[`../../../evaluation/gppi/REPORT.md`](../../../evaluation/gppi/REPORT.md)
+(Agreement) for the durable summary of this evidence. Summary: strict/repeated/centering_off → identical file names/counts
+(10/12/8), finite, measured rel max and L2 = 0 (gate ≤1e-3),
 spm_PEB calls 10→4 / 12→4 / 8→4; 2 MATLAB starts, 34 s cumulative.
 
 ## What changed (source diff)
 
-`functions/tmfc_PEB_PPI.m` (+21/−6): manual re-apply of M1 = c356caf
-(`opt/m1-peb-deconvolution`) on top of 3955863 — the `spm_PEB` deconvolution
+`functions/tmfc_PEB_PPI.m` (+21/−6): the `spm_PEB` deconvolution
 (`C = spm_PEB(Y,P); xn = xb*C{2}.E(1:N); xn = spm_detrend(xn)`) is hoisted
 out of the (condition × ROI) loop into a per-ROI `xn_all` cell computed once
 per run, plus a defensive `continue` for a run with an empty `jConds` list
@@ -36,11 +34,11 @@ ROI × run, never on the condition.
 | `centering_off` | strict | 2 + 2, legacy cond_list (no `.pmod`/`.bf` fields → defaults) | 1 (default) | absent (catch path) | same pair | no_mean_centering |
 
 Gates: identical file names/counts (== `expected_outputs`), `PPI.name`
-equality, finiteness, relative max AND L2 ≤ 1e-3 (no ULP/bitwise gate);
+equality, finiteness, relative max AND L2 ≤ 1e-3 (no ULP gate);
 spm_PEB calls: reference = nROI × Σ(conds per run), candidate = nROI ×
 runs-with-conds (strict 10→4, repeated 12→4, centering_off 8→4). Call
 counting uses the MATLAB profiler `FunctionTable` (`FunctionName`,
-`NumCalls`; same method as the stage1 harness) — no path shadowing and no
+`NumCalls`; the same method as the earlier phase-timing harness) — no path shadowing and no
 `spm_PEB` stubs, so no recursion risk and no cleanup hazard.
 
 ## Reproduction (already executed; command for the record)
@@ -59,9 +57,9 @@ read-only main toolbox checkout. Single case subset: pass e.g.
 ## Known risks / non-goals
 
 - Executed and passing on small synthetic fixtures (1 subject); not a
-  cohort/ds000008 run; no ULP gate (bitwise equality observed only).
+  cohort/ds000008 run; no ULP gate; agreement was measured as
+  rel max and L2 = 0.
 - LSS fixtures/tests are untouched; these tests live only in `tests/gppi/peb/`.
-- No M3, no gPPI/BSC changes, no commits.
 - The call-count check is structural (profiler-based); the numeric
   comparison against real SPM25 `spm_PEB` is the acceptance test and it
   passed on all cases.

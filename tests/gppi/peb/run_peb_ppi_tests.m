@@ -1,6 +1,6 @@
 function results = run_peb_ppi_tests(out_dir,ref_functions_dir,spm_dir,cases)
 
-% Regression tests for the M1 PEB hoist in tmfc_PEB_PPI: compares the
+% Regression tests for the PEB deconvolution hoist in tmfc_PEB_PPI: compares the
 % candidate (../../../functions) against a reference extraction of main
 % (ref_functions_dir) on the real-SPM fixtures from peb_ppi_fixture.m.
 %
@@ -10,10 +10,10 @@ function results = run_peb_ppi_tests(out_dir,ref_functions_dir,spm_dir,cases)
 %   - relative max |diff| AND relative L2 <= 1e-3 (no ULP requirement;
 %     bitwise equality may hold in practice but is not asserted)
 %   - spm_PEB call counts (measured via the MATLAB profiler FunctionTable,
-%     documented fields FunctionName/NumCalls, same method as the stage1
-%     harness) equal the fixture expectation: reference = nROI * (number
+%     documented fields FunctionName/NumCalls, the same method as the earlier
+%     phase-timing harness) equal the fixture expectation: reference = nROI * (number
 %     of selected conditions per run), candidate = nROI * (number of runs
-%     with >= 1 selected condition) -- i.e. the expected M1 reduction.
+%     with >= 1 selected condition) -- i.e. the expected reduction.
 %     No path shadowing or spm_PEB stubs are used.
 %
 % FORMAT results = run_peb_ppi_tests(out_dir,ref_functions_dir,spm_dir,cases)
@@ -22,7 +22,7 @@ function results = run_peb_ppi_tests(out_dir,ref_functions_dir,spm_dir,cases)
 %   spm_dir           - SPM25 install (read-only)
 %   cases             - optional subset of {'strict','repeated','centering_off'}
 %
-% STATUS: executed, PASS (see evaluation/gppi/PEB_EXACT_TESTS.md). Reproduction:
+% STATUS: executed, PASS (see evaluation/gppi/REPORT.md, Agreement). Reproduction:
 %
 %   matlab -batch "cd <this_checkout>/tests/gppi/peb; results = ...
 %       run_peb_ppi_tests('/tmp/tmfc10_peb_out', ...
@@ -68,7 +68,7 @@ for k = 1:numel(cases)
     n_ref  = run_counted(fx,ref_functions_dir,fullfile(out_dir,'runs',name,'ref_prof'));
     n_cand = run_counted(fx,candidate,        fullfile(out_dir,'runs',name,'cand_prof'));
     assert(n_ref  == fx.expected_calls_old,'Reference spm_PEB call count unexpected');
-    assert(n_cand == fx.expected_calls_new,'Candidate spm_PEB call count not reduced (M1)');
+    assert(n_cand == fx.expected_calls_new,'Candidate spm_PEB call count not reduced (PEB hoist)');
     m.calls_ref = n_ref; m.calls_cand = n_cand;
 
     if isempty(results), results = m; else, results(end+1) = m; end %#ok<AGROW>
