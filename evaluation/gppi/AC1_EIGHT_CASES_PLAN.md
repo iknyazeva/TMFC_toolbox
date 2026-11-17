@@ -1,4 +1,4 @@
-# AC1 eight-case completion + exact-only validation — ONE launch packet (NOT RUN)
+# AC1 eight-case completion + exact-only validation — EXECUTED 2026-11-17 (launch `M7_exact_only_validation`; this file is kept as the reproducible packet + outcome record)
 
 Prepared 2026-11-17 in the clean worktree `TMFC-10-gppi-clean`
 (`clean/accelerated_gppi`). **Execution state = the owner's removal
@@ -7,7 +7,19 @@ review; commits `3dc8823` + `9d564bb` preserve the full pooled/warm
 history locally — only until/unless history is rewritten, which nobody
 plans). The launch refuses to run until that commit exists and matches
 `EXPECTED_PIN`. Reference main: `TMFC-17-ihb-main` @ `3fb347b`, read-only.
-**Zero MATLAB starts were performed; nothing below is claimed PASS.**
+OUTCOME (executed once, as approved): single launch at pin
+`f184cd66f9b0231700e10d4d0620db8a83cdecf0` — 22/22 exact fixture cases
+PASS (rel max and L2 = 0, batch equality, structural checks), PEB 3/3
+PASS (rel 0, `spm_PEB` calls 10/12/8 -> 4 per fixture), option-guard
+preflight PASS; rc 0, watchdog wall 850.4 s of the 1300 s ceiling,
+cleanup confirmed; peak RSS 1,719,861,248 bytes as reported by
+`/usr/bin/time -l` for the launched process tree (not split per process).
+Evidence: `out/results.json`, `peb/results.mat`,
+`run/ledger_M7_exact_only_validation.json`, `logs/` under the OUT root
+(section 2). The
+sections below are the pre-launch packet, preserved verbatim for
+reproducibility; the ceiling arithmetic of section 3 was an estimate —
+the measured wall is above.
 
 ## 1. What this single launch validates
 
@@ -118,7 +130,8 @@ None a1/a3 160.6 s, PEB unit ~20 s — each of these seven ledgers embeds
 one ~20-25 s MATLAB startup; in a SINGLE launch that startup is paid
 once. Marginal (startup-subtracted) sum for the 14 regression cases +
 PEB + guard preflight ≈ (44+46+34+61+69+71+160+20) − 7×22 + 5 ≈ **370 s
-observed**. The eight NEW cells never ran — EXTRAPOLATION from
+observed**. HISTORICAL PRE-LAUNCH ESTIMATE — at packet time the eight
+new cells had never run; their share below was EXTRAPOLATION from
 same-analysis (M2/M3 ≈ 24 s/case marginal) and same-noise (M5, rWLS
 parents ≈ 9 s/case extra) anchors: FAST a1/a3 ≈ 25-30 s each, rWLS a1/a3
 ≈ 35-45 s each ≈ **250-300 s extrapolated**. Single-launch total ≈ 370 +

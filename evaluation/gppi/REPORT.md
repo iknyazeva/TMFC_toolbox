@@ -74,9 +74,11 @@ input to ReML changes. The estimate is approximate by design.
 
 ## Timing (ds000008 sub-01, serial, one run per cell; seconds)
 
-Exact rows were measured on pre-removal snapshots of the accelerated
-sources (see AC1 audit); the exact numeric path is preserved verbatim in
-this tree, but the exact-only build itself has not been re-timed.
+Exact rows were measured on earlier validated source states of the
+accelerated branch (per-start snapshots); the delivered exact-only build
+(commit `f184cd66`) matches `main` exactly on the 22-case validation
+matrix, but its branch timings have not been re-measured — treat the
+speedups below as properties of the tested earlier versions.
 
 Exact method vs `main`, per branch (no totals across branches):
 
@@ -135,21 +137,30 @@ all measured 0 unless stated):
 | Analysis 2 (ROI-to-ROI) | gPPI + gPPI-FIR x AR(1)/FAST/rWLS parents | numeric PASS, rel max/L2 = 0 |
 | Analysis 2, independent errors (`None`) | both methods | main's legacy estimation failure reproduced identically (accepted legacy restriction, owner-approved); NOT a numerical output agreement |
 | Analysis 1 and 3 (seed-to-voxel) | both methods x AR(1) and `None` parents | numeric PASS, rel max/L2 = 0 |
-| Analysis 1/3 x FAST or rWLS parents | NOT RUN (8 cells: 2 methods x 2 analyses x 2 noise models) | no coverage claim; shared estimation mechanics do not substitute for a run |
+| Analysis 1/3 x FAST or rWLS parents | 8 cells (2 methods x 2 analyses x 2 noise models), executed in the final validation launch | numeric PASS, rel max/L2 = 0 |
 
-The executed matrix is narrower than the original acceptance criterion; no
-full four-noise-model analysis-1/3 coverage is claimed.
+Fixture coverage after the final validation launch spans all four noise
+models in analysis 1/3 (AR(1), FAST, rWLS via fixtures plus independent
+errors via the None a1/a3 cases) for both methods, in addition to the
+full analysis-2 matrix. The remaining scope limit is analysis 2 with
+independent-error (`None`) parents: there the legacy estimation failure
+of `main` is reproduced identically — an accepted legacy restriction,
+not a numerical output agreement.
 
-Provenance of the exact-equivalence evidence: the direct `main`
-comparisons above were executed on earlier validated source states (each
-run under a per-start source snapshot). The final commit retains the
-exact estimator blocks unchanged (static literal proof against the branch
-base), and a replay with the final code reproduced the saved exact
-outputs for the simulated design-01/13 and real AR(1) targets exactly
-(relative L2 = 0). No fresh `main` comparison was run at the final commit
-SHA: that part of the chain is code review plus snapshot transitivity,
-not a same-SHA numerical run. The zero-error results above are the
-measured values of the runs that were executed.
+Provenance of the exact-equivalence evidence: the historical real-data
+and 100-ROI comparisons were executed on earlier validated source states
+(each run under a per-start source snapshot); the performance numbers in
+the timing tables refer to those source versions. The delivered exact-only
+build (commit `f184cd66`) was validated directly against `main` in the
+final validation launch: 22 fixture cases (14 regression + the 8
+analysis-1/3 FAST/rWLS cells) plus the PEB fixtures and the option-guard
+preflight, one serial process, rel max and L2 = 0 on every case, with
+per-case source attribution (`which`) and pinned snapshots. Independent-error
+parents in analysis 2 remain the accepted legacy failure (reproduced
+identically, not a numerical output agreement). Real-data runs for
+independent-error/rWLS parents and real seed-to-voxel remain deferred.
+The zero-error results above are the measured values of the runs that
+were executed.
 
 Pooled vs exact (report-only, no gate):
 
