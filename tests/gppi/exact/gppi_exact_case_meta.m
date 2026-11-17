@@ -29,6 +29,14 @@ switch name
     case 'none_a1',   cs.cvi = 'None'; cs.analysis = 1;
     case 'fir_none_s2v', cs.method = 'fir'; cs.cvi = 'None'; cs.analysis = 3;
     case 'fir_none_a1',  cs.method = 'fir'; cs.cvi = 'None'; cs.analysis = 1;
+    case 'fast_s2v',   cs.cvi = 'FAST'; cs.analysis = 3;
+    case 'fast_a1',    cs.cvi = 'FAST'; cs.analysis = 1;
+    case 'rwls_s2v',   cs.cvi = 'wls';  cs.analysis = 3;
+    case 'rwls_a1',    cs.cvi = 'wls';  cs.analysis = 1;
+    case 'fir_fast_s2v', cs.method = 'fir'; cs.cvi = 'FAST'; cs.analysis = 3;
+    case 'fir_fast_a1',  cs.method = 'fir'; cs.cvi = 'FAST'; cs.analysis = 1;
+    case 'fir_rwls_s2v', cs.method = 'fir'; cs.cvi = 'wls';  cs.analysis = 3;
+    case 'fir_rwls_a1',  cs.method = 'fir'; cs.cvi = 'wls';  cs.analysis = 1;
     case 'ar1_oldvoi'                                   % same compare contract
     otherwise, error('Unknown case %s',name);
 end

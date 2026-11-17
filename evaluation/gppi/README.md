@@ -46,9 +46,8 @@ run_gppi_exact_tests('<out>', '<main_toolbox>/functions', '<spm25>', ...
      'ar1_a1','fir_ar1_a1','ar1_s2v','fir_ar1_s2v', ...
      'none_s2v','none_a1','fir_none_s2v','fir_none_a1'})
 
-% options: exact regression + pooled agreement + negative guards
-run_gppi_options_tests(...)   % see tests/gppi/options headers
-run_gppi_options_negative(...)
+% compact option-guard preflight (exact-only build)
+ok = test_gppi_option_guards('<this_checkout>/functions');
 
 % PEB deconvolution hoist
 run_peb_ppi_tests(...)        % see tests/gppi/peb/README.md
@@ -56,10 +55,9 @@ run_peb_ppi_tests(...)        % see tests/gppi/peb/README.md
 
 For the timing and pooled-agreement measurements, prepare two writable
 project copies (main and this branch) with identical inputs and parent
-models, set `tmfc.defaults.gppi_method` per the run, and time the VOI,
-PPI, gPPI and gPPI-FIR branches separately (the recorded numbers report
-branches, never sums). For pooled runs keep the parent AR(1) and the
-analysis mode at 2 (ROI-to-ROI).
+models, and time the VOI, PPI, gPPI and gPPI-FIR branches separately (the
+recorded numbers report branches, never sums). Historical pooled timings
+were taken on pre-removal revisions with the option present.
 
 ## Recorded results
 

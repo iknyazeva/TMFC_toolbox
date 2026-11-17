@@ -159,6 +159,26 @@ function [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub)
 % License: GPL-3.0-or-later
 % Contact: masharipov@ihb.spb.ru
 
+%% ---- option guard: exact only (owner decision 2026-11-17; placed at the
+%% top, before ANY tmfc access, IO or SPM initialisation) ----
+% The pooled-Cy and warm-start options were removed from this delivery;
+% the full implementation remains in the branch history (commit 3dc8823).
+% Previously accepted values are rejected EXPLICITLY, no silent fallback.
+% A missing/non-struct tmfc.defaults falls through unchanged (the legacy
+% validation later in the file reports it as before).
+if isfield(tmfc,'defaults') && isstruct(tmfc.defaults)
+    if isfield(tmfc.defaults,'gppi_method') && ~strcmp(tmfc.defaults.gppi_method,'exact')
+        error('tmfc_gPPI:InvalidMethod', ...
+            ['tmfc.defaults.gppi_method must be ''exact''; the pooled method ' ...
+             'was removed from this delivery (preserved in branch history)']);
+    end
+    if isfield(tmfc.defaults,'gppi_reml_warm_start')
+        error('tmfc_gPPI:WarmStartRemoved', ...
+            ['tmfc.defaults.gppi_reml_warm_start was removed from this ' ...
+             'delivery (preserved in branch history)']);
+    end
+end
+
 if nargin == 1
    ROI_set_number = 1;
    start_sub = 1;
@@ -226,13 +246,6 @@ spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
 spm_get_defaults('stats.fmri.ufp',1);
 spm_jobman('initcfg');
 
-% ---- Pooled-Cy / warm-start options (explicit opt-in; default exact) --
-% tmfc.defaults.gppi_method:          'exact' (default) | 'pooled'
-% tmfc.defaults.gppi_reml_warm_start: logical scalar, default false.
-% Strict validation, no silent fallbacks (tmfc_gPPI_pooled_options); the
-% exact path is behaviourally unchanged when the fields are absent
-% (OPTIONS_DESIGN, Revision 2026-11-16, R4).
-[gp_pooled,gp_warm] = tmfc_gPPI_pooled_options(tmfc.defaults,'tmfc_gPPI');
 
 % Initialize parfor
 useParROI = false;
@@ -342,34 +355,6 @@ if ~useParSub
             rWLS(iSub) = 0;
         end
 
-        % Pooled-Cy guards and whole-brain load job (gppi_method='pooled'
-        % only; the exact path never enters this block). Built here while
-        % the PARENT SPM is loaded - later per-seed loads overwrite the
-        % SPM variable (OPTIONS_DESIGN Revision R1: one concatenated BOLD
-        % pass; concat sessions are an open risk, 7.1, rejected loudly).
-        pooled_job = [];
-        if gp_pooled
-            if rWLS(iSub) == 1
-                error('tmfc_gPPI:PooledRWLSUnsupported', ...
-                    ['pooled with an rWLS parent (xVi.form==''wls'') is ' ...
-                     'not supported in this slice; robust estimation ' ...
-                     'remains the only rWLS path']);
-            end
-            if strcmpi(SPM.xVi.form,'fast')
-                error('tmfc_gPPI:PooledFastUnsupported', ...
-                    ['pooled approximation is numerically pathological ' ...
-                     'under FAST at real scale (rel ~1e6; evidence ' ...
-                     'REAL_APPROX_RESULTS section 4 / POOLED_FAST_DECISION.md); ' ...
-                     'supported noise: AR(1)']);
-            end
-            if SPM_concat(iSub) == 1
-                error('tmfc_gPPI:PooledConcatUnsupported', ...
-                    ['pooled with concatenated sessions (SPM_concat==1) ' ...
-                     'is not supported in this slice (open risk, ' ...
-                     'OPTIONS_DESIGN 7.1)']);
-            end
-            pooled_job = tmfc_gPPI_pooled_job(SPM,sess_num);
-        end
 
         % ROI-invariant part of the gPPI fmri_spec batch, computed once per
         % subject and cloned for each seed ROI below (exact I/O reuse: the
@@ -697,35 +682,6 @@ if ~useParSub
     
             beta = [];
     
-            % Pooled: shared run-pooled Cy once per subject (+ optional
-            % warm h0 cache from a cold first-seed ReML); the exact path
-            % below is unchanged. h0 is computed BEFORE the seed loop so
-            % serial and parfor share identical warm semantics (R4).
-            Cy = []; h0 = []; keep = [];
-            if gp_pooled
-                spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-                SPM1 = load(fullfile(tmfc.project_path,'ROI_sets', ...
-                    tmfc.ROI_set(ROI_set_number).set_name,'gPPI', ...
-                    tmfc.subjects(iSub).name, ...
-                    tmfc.ROI_set(ROI_set_number).ROIs(1).name,'SPM.mat')).SPM;
-                if isfield(SPM1.xX,'W')
-                    SPM1.xX  = rmfield(SPM1.xX,'W');
-                end
-                if isfield(SPM1.xVi,'V')
-                    SPM1.xVi = rmfield(SPM1.xVi,'V');
-                end
-                [Cy,h0,keep,pinfo] = tmfc_gPPI_pooled_prepare(pooled_job,SPM1,Y, ...
-                    spm_get_defaults('stats.fmri.ufp'),gp_warm);
-                fprintf('[gPPI] pooled: sub %s runs=%d pooledVox=%d warm=%d\n', ...
-                    tmfc.subjects(iSub).name,numel(sess_num),pinfo.nPool,gp_warm);
-                pooled_dir = fullfile(tmfc.project_path,'ROI_sets', ...
-                    tmfc.ROI_set(ROI_set_number).set_name,'gPPI', ...
-                    'GLM_batches','pooled');
-                if ~exist(pooled_dir,'dir'), mkdir(pooled_dir); end
-                save(fullfile(pooled_dir, ...
-                    [tmfc.subjects(iSub).name '_pooled_Cy.mat']),'pinfo');
-                clear SPM1 pooled_dir
-            end
 
             if ~useParROI
                 for jROI = 1:nROI
@@ -739,24 +695,18 @@ if ~useParSub
                         SPM.xVi = rmfield(SPM.xVi,'V');
                     end
                     spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-                    if gp_pooled
-                        % Shared run-pooled Cy + optional warm h0 (built
-                        % above); ReML block, W and pKX*Y live in the helper
-                        [beta(:,:,jROI),W] = tmfc_gPPI_pooled_estimate(SPM,Y,Cy,h0,keep);
-                    else
-                        % Check for rWLS
-                        if rWLS(iSub) == 0
-                            xVi = spm_est_non_sphericity(SPM);
-                        else
-                            xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
-                        end
-                        W           = spm_sqrtm(spm_inv(xVi.V));
-                        W           = W.*(abs(W) > 1e-6);
-                        xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
-                        xKXs.X      = full(xKXs.X);
-                        pKX         = spm_sp('x-',xKXs);
-                        beta(:,:,jROI)        = pKX*Y;
-                    end
+    % Check for rWLS
+    if rWLS(iSub) == 0
+        xVi = spm_est_non_sphericity(SPM);
+    else
+        xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+    end
+    W           = spm_sqrtm(spm_inv(xVi.V));
+    W           = W.*(abs(W) > 1e-6);
+    xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
+    xKXs.X      = full(xKXs.X);
+    pKX         = spm_sp('x-',xKXs);
+    beta(:,:,jROI)        = pKX*Y;
                 end
             else
                 parfor jROI = 1:nROI
@@ -770,25 +720,18 @@ if ~useParSub
                         SPM.xVi = rmfield(SPM.xVi,'V');
                     end
                     spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-                    if gp_pooled
-                        % Shared run-pooled Cy + optional warm h0 (built
-                        % above; broadcast read-only into the workers);
-                        % ReML block, W and pKX*Y live in the helper
-                        [beta(:,:,jROI),W] = tmfc_gPPI_pooled_estimate(SPM,Y,Cy,h0,keep);
-                    else
-                        % Check for rWLS
-                        if rWLS(iSub) == 0
-                            xVi = spm_est_non_sphericity(SPM);
-                        else
-                            xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
-                        end
-                        W           = spm_sqrtm(spm_inv(xVi.V));
-                        W           = W.*(abs(W) > 1e-6);
-                        xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
-                        xKXs.X      = full(xKXs.X);
-                        pKX         = spm_sp('x-',xKXs);
-                        beta(:,:,jROI)        = pKX*Y;
-                    end
+    % Check for rWLS
+    if rWLS(iSub) == 0
+        xVi = spm_est_non_sphericity(SPM);
+    else
+        xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+    end
+    W           = spm_sqrtm(spm_inv(xVi.V));
+    W           = W.*(abs(W) > 1e-6);
+    xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
+    xKXs.X      = full(xKXs.X);
+    pKX         = spm_sp('x-',xKXs);
+    beta(:,:,jROI)        = pKX*Y;
                 end
             end
     
@@ -993,32 +936,6 @@ function ok = tmfc_gPPI_one_sub(tmfc,ROI_set_number,iSub,cond_list,nCond,nROI)
     rWLS = 0;
     if strcmp(SPM.xVi.form,'wls'), rWLS = 1; end
 
-    % Pooled-Cy options (one_sub flow; same contract as the multi-subject
-    % path) and whole-brain load job while the parent SPM is in scope
-    [gp_pooled,gp_warm] = tmfc_gPPI_pooled_options(tmfc.defaults,'tmfc_gPPI');
-    pooled_job = [];
-    if gp_pooled
-        if rWLS == 1
-            error('tmfc_gPPI:PooledRWLSUnsupported', ...
-                ['pooled with an rWLS parent (xVi.form==''wls'') is not ' ...
-                 'supported in this slice; robust estimation remains the ' ...
-                 'only rWLS path']);
-        end
-        if strcmpi(SPM.xVi.form,'fast')
-            error('tmfc_gPPI:PooledFastUnsupported', ...
-                ['pooled approximation is numerically pathological ' ...
-                 'under FAST at real scale (rel ~1e6; evidence ' ...
-                 'REAL_APPROX_RESULTS section 4 / POOLED_FAST_DECISION.md); ' ...
-                 'supported noise: AR(1)']);
-        end
-        if SPM_concat == 1
-            error('tmfc_gPPI:PooledConcatUnsupported', ...
-                ['pooled with concatenated sessions (SPM_concat==1) is ' ...
-                 'not supported in this slice (open risk, OPTIONS_DESIGN ' ...
-                 '7.1)']);
-        end
-        pooled_job = tmfc_gPPI_pooled_job(SPM,sess_num);
-    end
     
     % Loop through ROIs
     for jROI = 1:nROI
@@ -1285,33 +1202,6 @@ function ok = tmfc_gPPI_one_sub(tmfc,ROI_set_number,iSub,cond_list,nCond,nROI)
 
         beta = [];
 
-        % Pooled: shared run-pooled Cy once (+ optional warm h0 cache);
-        % exact path unchanged (see the multi-subject branch above)
-        Cy = []; h0 = []; keep = [];
-        if gp_pooled
-            spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-            SPM1 = load(fullfile(tmfc.project_path,'ROI_sets', ...
-                tmfc.ROI_set(ROI_set_number).set_name,'gPPI', ...
-                tmfc.subjects(iSub).name, ...
-                tmfc.ROI_set(ROI_set_number).ROIs(1).name,'SPM.mat')).SPM;
-            if isfield(SPM1.xX,'W')
-                SPM1.xX  = rmfield(SPM1.xX,'W');
-            end
-            if isfield(SPM1.xVi,'V')
-                SPM1.xVi = rmfield(SPM1.xVi,'V');
-            end
-            [Cy,h0,keep,pinfo] = tmfc_gPPI_pooled_prepare(pooled_job,SPM1,Y, ...
-                spm_get_defaults('stats.fmri.ufp'),gp_warm);
-            fprintf('[gPPI] pooled: sub %s runs=%d pooledVox=%d warm=%d\n', ...
-                tmfc.subjects(iSub).name,numel(sess_num),pinfo.nPool,gp_warm);
-            pooled_dir = fullfile(tmfc.project_path,'ROI_sets', ...
-                tmfc.ROI_set(ROI_set_number).set_name,'gPPI', ...
-                'GLM_batches','pooled');
-            if ~exist(pooled_dir,'dir'), mkdir(pooled_dir); end
-            save(fullfile(pooled_dir, ...
-                [tmfc.subjects(iSub).name '_pooled_Cy.mat']),'pinfo');
-            clear SPM1 pooled_dir
-        end
 
         for jROI = 1:nROI
             SPM = []; xX = []; xVi = []; W = []; xKXs = []; pKX = [];
@@ -1324,24 +1214,18 @@ function ok = tmfc_gPPI_one_sub(tmfc,ROI_set_number,iSub,cond_list,nCond,nROI)
                 SPM.xVi = rmfield(SPM.xVi,'V');
             end
             spm_get_defaults('stats.maxmem',tmfc.defaults.maxmem);
-            if gp_pooled
-                % Shared run-pooled Cy + optional warm h0 (built above);
-                % ReML block, W and pKX*Y live in the helper
-                [beta(:,:,jROI),W] = tmfc_gPPI_pooled_estimate(SPM,Y,Cy,h0,keep);
-            else
-                % Check for rWLS
-                if rWLS == 0
-                    xVi = spm_est_non_sphericity(SPM);
-                else
-                    xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
-                end
-                W           = spm_sqrtm(spm_inv(xVi.V));
-                W           = W.*(abs(W) > 1e-6);
-                xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
-                xKXs.X      = full(xKXs.X);
-                pKX         = spm_sp('x-',xKXs);
-                beta(:,:,jROI)        = pKX*Y;
-            end
+    % Check for rWLS
+    if rWLS == 0
+        xVi = spm_est_non_sphericity(SPM);
+    else
+        xVi = tmfc_spm_rwls_est_non_sphericity(SPM);
+    end
+    W           = spm_sqrtm(spm_inv(xVi.V));
+    W           = W.*(abs(W) > 1e-6);
+    xKXs        = spm_sp('Set',spm_filter(xX.K,W*xX.X));
+    xKXs.X      = full(xKXs.X);
+    pKX         = spm_sp('x-',xKXs);
+    beta(:,:,jROI)        = pKX*Y;
         end
 
         % Save PPI beta matrices

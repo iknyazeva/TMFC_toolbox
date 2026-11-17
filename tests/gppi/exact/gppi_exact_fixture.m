@@ -26,6 +26,9 @@ function [cs,fx] = gppi_exact_fixture(name,fxdir)
 %   none fast rwls fir_none fir_fast fir_rwls  - remaining noise models
 %   ar1_s2v    - analysis 3 (single seed-to-voxel, small analysis mask)
 %   ar1_a1     - analysis 1 (seed-to-voxel + ROI-to-ROI)
+%   fast_s2v fast_a1 rwls_s2v rwls_a1 and fir_ mirrors - the eight
+%   FAST/rWLS x analysis 1/3 cells (AC1 coverage completion; seeds 12/13
+%   per the s2v/a1 convention; SOURCE-READY, NOT RUN)
 %   none_s2v none_a1 fir_none_s2v fir_none_a1 - cvi 'None' via analysis
 %                1/3 (owner-approved policy: a1/a3 estimate Classical via
 %                spm_jobman and never call spm_est_non_sphericity; the
@@ -64,6 +67,14 @@ switch name
     case 'none_a1',   cs.cvi = 'None'; cs.analysis = 1; cs.seed = 13;
     case 'fir_none_s2v', cs.method = 'fir'; cs.cvi = 'None'; cs.analysis = 3; cs.seed = 12;
     case 'fir_none_a1',  cs.method = 'fir'; cs.cvi = 'None'; cs.analysis = 1; cs.seed = 13;
+    case 'fast_s2v',   cs.cvi = 'FAST'; cs.analysis = 3; cs.seed = 12;
+    case 'fast_a1',    cs.cvi = 'FAST'; cs.analysis = 1; cs.seed = 13;
+    case 'rwls_s2v',   cs.cvi = 'wls';  cs.analysis = 3; cs.seed = 12;
+    case 'rwls_a1',    cs.cvi = 'wls';  cs.analysis = 1; cs.seed = 13;
+    case 'fir_fast_s2v', cs.method = 'fir'; cs.cvi = 'FAST'; cs.analysis = 3; cs.seed = 12;
+    case 'fir_fast_a1',  cs.method = 'fir'; cs.cvi = 'FAST'; cs.analysis = 1; cs.seed = 13;
+    case 'fir_rwls_s2v', cs.method = 'fir'; cs.cvi = 'wls';  cs.analysis = 3; cs.seed = 12;
+    case 'fir_rwls_a1',  cs.method = 'fir'; cs.cvi = 'wls';  cs.analysis = 1; cs.seed = 13;
     case 'ar1_oldvoi',cs.old_voi = [false false false];
     otherwise, error('Unknown case %s',name);
 end

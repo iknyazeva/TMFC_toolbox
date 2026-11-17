@@ -3,8 +3,8 @@
 ## Summary
 
 `accelerated_gppi` estimates the same gPPI and gPPI-FIR models as `main`
-faster using the default `exact` method, and adds an optional `pooled`
-approximation for the ROI-to-ROI noise estimation. The acceleration covers
+faster using the `exact` method (the only one in this delivery; a pooled
+approximation existed pre-removal — see the historical sections). The acceleration covers
 the whole path: VOI extraction, PPI regressor construction (fewer
 `spm_PEB` deconvolution calls), and the per-ROI batch estimation in
 `tmfc_gPPI` / `tmfc_gPPI_FIR` (batch template built once per subject, VOI
@@ -12,43 +12,50 @@ series read once, estimation loop restructured). Public interfaces and
 output files are unchanged; runs are serial, without parallel workers.
 
 On real data (ds000008 sub-01, 9 ROIs, serial) the exact method reproduces
-`main` exactly as measured (relative max and L2 difference 0) while running the
-gPPI branch 1.47x (AR(1)) and 1.20x (FAST) faster; on the 100-ROI
-synthetic calibration the gPPI branch is 3.86x faster. The optional pooled
-method is close to exact on AR(1) real data (worst relative deviation
-4.3e-3) with a further 1.77x (gPPI) and 1.88x (gPPI-FIR) branch speedup,
-but deviates about 10% (relative L2) on the single-voxel-ROI simulations;
-it is guarded off for FAST parents, where its agreement was pathological.
+`main` exactly as measured (relative max and L2 difference 0) while running
+the gPPI branch 1.47x (AR(1)) and 1.20x (FAST) faster; on the 100-ROI
+synthetic calibration the gPPI branch is 3.86x faster. Historically
+(pre-removal), the pooled option was close to exact on AR(1) real data
+(worst relative deviation 4.3e-3) with a further 1.77x (gPPI) and 1.88x
+(gPPI-FIR) branch speedup, but deviated about 10% (relative L2) on the
+single-voxel-ROI simulations and was pathological under FAST; see the
+historical sections — pooled is NOT part of this delivery.
 
 ## Parameters and usage
 
-| `tmfc.defaults` field | Values and behavior |
-|---|---|
-| `gppi_method` | `'exact'` (default) or `'pooled'`. Shared by `tmfc_gPPI` and `tmfc_gPPI_FIR`. Invalid values error. |
-| `gppi_reml_warm_start` | Logical, default `false`; pooled only. Warm-started ReML initialisation. Setting it with `exact` warns and ignores it. |
+This delivery is **exact-only** (owner decision 2026-11-17). The default
+and only estimation method is `exact`: identical numerics to `main`,
+faster. The former `pooled` and warm-start options were REMOVED from the
+code; their full implementation is preserved in the branch history
+(commit `3dc8823`, removed on top of it). Previously accepted option
+values are rejected EXPLICITLY at the very top of both functions, before
+any other configuration access, IO or SPM initialisation — no silent
+fallback:
 
-Guards (errors with specific identifiers, checked before any estimation):
-`pooled` is supported for ROI-to-ROI analysis (analysis 2) with AR(1)
-parents only — pooled with analysis 1/3 errors (`PooledUnsupported`);
-pooled with a FAST parent errors (`PooledFastUnsupported`; numerically
-pathological at real scale, see below); pooled with an rWLS parent errors
-(`PooledRWLSUnsupported`); pooled with concatenated sessions errors
-(`PooledConcatUnsupported`); pooled with independent errors (`None`)
-fails inside analysis 2 with the same legacy error as `main` and `exact`
-(SPM25 non-sphericity estimation requires covariance components that a
-`None` parent does not have — a pre-existing limitation of the analysis-2
-path, unchanged by this branch).
+- `tmfc.defaults.gppi_method` present and not `'exact'` errors
+  (`tmfc_gPPI:InvalidMethod` / `tmfc_gPPI_FIR:InvalidMethod`);
+- `tmfc.defaults.gppi_reml_warm_start` present (any value) errors
+  (`tmfc_gPPI:WarmStartRemoved` / `tmfc_gPPI_FIR:WarmStartRemoved`).
+
+A basic call needs no option fields at all:
 
 ```matlab
-tmfc.defaults.gppi_method = 'exact';      % default: same numerics as main, faster
-tmfc_gPPI(tmfc);
-
-tmfc.defaults.gppi_method = 'pooled';     % approximation, AR(1) + analysis 2 only
-tmfc.defaults.gppi_reml_warm_start = false;
-tmfc_gPPI(tmfc);
+tmfc_gPPI(tmfc);        % exact: same numerics as main, faster
+tmfc_gPPI_FIR(tmfc);
 ```
 
-## What the pooled method approximates
+Independent-error (`None`) parents still fail inside analysis 2 with the
+same legacy error as `main` (SPM25 non-sphericity estimation requires
+covariance components a `None` parent does not have — pre-existing
+analysis-2 limitation, unchanged).
+
+## What the pooled method approximated (REMOVED — historical context)
+
+The numbers in this section and in the pooled rows of the tables below
+were measured on the PRE-REMOVAL code (commits `3dc8823`/`9d564bb`,
+option still present). They are kept as research context and do NOT
+validate the exact-only build of this working tree (which has not been
+re-run).
 
 In analysis 2 the exact path estimates the noise operator per seed ROI:
 for each seed it strips the previous whitening, calls SPM's
@@ -66,6 +73,10 @@ solving are kept (`tmfc_gPPI_pooled_estimate`), so only the covariance
 input to ReML changes. The estimate is approximate by design.
 
 ## Timing (ds000008 sub-01, serial, one run per cell; seconds)
+
+Exact rows were measured on pre-removal snapshots of the accelerated
+sources (see AC1 audit); the exact numeric path is preserved verbatim in
+this tree, but the exact-only build itself has not been re-timed.
 
 Exact method vs `main`, per branch (no totals across branches):
 
@@ -169,7 +180,9 @@ exact stay within 0.0026.
   (4.26e-3 vs 4.30e-3; branch timings within noise) and is default-off.
 - Pooled with FAST parents is numerically pathological at real scale
   (ReML objectives of order 1e9 during estimation; agreement rel max up to
-  8.6e+5) and errors early with `PooledFastUnsupported`.
+  8.6e+5) and errored early with `PooledFastUnsupported` (pre-removal
+  behaviour of the removed option; the current build rejects the option
+  itself).
 - The synthetic design-12 exact reference is a non-paired earlier run of
   the same exact code on identical inputs (verified bit-identical inputs),
   not a same-start pairing.
