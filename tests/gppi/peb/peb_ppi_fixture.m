@@ -25,7 +25,7 @@ function [cs,fx] = peb_ppi_fixture(name,fxdir)
 %                   Yraw fails the numeric gate loudly); name with a space
 %                   exercises regexprep in output file names
 %
-% STATUS: executed, PASS (see evaluation/gppi/REPORT.md, Agreement). Reproduction:
+% STATUS: executed, PASS (see evaluation/REPORT.md, Agreement). Reproduction:
 %
 %   matlab -batch "cd <this_checkout>/tests/gppi/peb; results = ...
 %       run_peb_ppi_tests('/tmp/tmfc10_peb_out', ...

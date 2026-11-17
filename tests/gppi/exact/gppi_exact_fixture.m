@@ -35,7 +35,7 @@ function [cs,fx] = gppi_exact_fixture(name,fxdir)
 %                analysis-2 None failure is a documented legacy limit)
 %   ar1_oldvoi - all VOIs new-style (Yraw present everywhere)
 %
-% STATUS: executed, PASS (evaluation/gppi/REPORT.md, Agreement). rWLS case estimates the parent with
+% STATUS: executed, PASS (evaluation/REPORT.md, Agreement). rWLS case estimates the parent with
 % tmfc_spm_rwls_spm (real rWLS, xVi.form='wls'; NOT renamed AR/None).
 %
 % License: GPL-3.0-or-later

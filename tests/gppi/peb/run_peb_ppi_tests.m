@@ -22,7 +22,7 @@ function results = run_peb_ppi_tests(out_dir,ref_functions_dir,spm_dir,cases)
 %   spm_dir           - SPM25 install (read-only)
 %   cases             - optional subset of {'strict','repeated','centering_off'}
 %
-% STATUS: executed, PASS (see evaluation/gppi/REPORT.md, Agreement). Reproduction:
+% STATUS: executed, PASS (see evaluation/REPORT.md, Agreement). Reproduction:
 %
 %   matlab -batch "cd <this_checkout>/tests/gppi/peb; results = ...
 %       run_peb_ppi_tests('/tmp/tmfc10_peb_out', ...

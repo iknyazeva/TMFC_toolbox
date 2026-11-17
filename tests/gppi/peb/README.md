@@ -1,7 +1,7 @@
 # gPPI acceleration — PEB hoist: source + fixtures (EXECUTED: PASS)
 
 Status: **EXECUTED 2026-11-16 — PASS (all 3 cases, all gates).** See
-[`../../../evaluation/gppi/REPORT.md`](../../../evaluation/gppi/REPORT.md)
+[`../../../evaluation/REPORT.md`](../../../evaluation/REPORT.md)
 (Agreement) for the durable summary of this evidence. Summary: strict/repeated/centering_off → identical file names/counts
 (10/12/8), finite, measured rel max and L2 = 0 (gate ≤1e-3),
 spm_PEB calls 10→4 / 12→4 / 8→4; 2 MATLAB starts, 34 s cumulative.
