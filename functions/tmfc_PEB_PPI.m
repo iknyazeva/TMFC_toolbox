@@ -164,7 +164,7 @@ for s = sess_num(:)'
     % matrix and the data must be WHITENED. Applying inverse whitening at this
     % stage would lead to a mismatch between DATA and DECONVOLUTION MATRIX
     % whitening. Later, for the gPPI model, we use the raw (not whitened) BOLD signal
-    % for the PHYS regressor to avoid the double-whitening issue (see He et al., 2025).
+    % for the PHYS regressor to avoid the double-whitening issue (see Masharipov & Kireev, 2026; He et al., 2025).
     %-----------------------------------------------------------------------------------
 
     % --------------------------------------------------------------
@@ -182,12 +182,6 @@ for s = sess_num(:)'
     % --------------------------------------------------------------
     jConds = conds_by_sess{s};
     nCond_s = numel(jConds);
-
-    % Defensive skip: a run without selected conditions must not pay for
-    % deconvolution (cannot happen with strict/repeated lists today)
-    if isempty(jConds)
-        continue
-    end
 
     % --------------------------------------------------------------
     % Deconvolution (PEB) for each ROI (invariant to condition: Y, xb and P
