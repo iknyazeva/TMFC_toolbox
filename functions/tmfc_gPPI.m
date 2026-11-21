@@ -1,4 +1,4 @@
-function [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub)
+function [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub,end_sub)
 
 % ========= Task-Modulated Functional Connectivity (TMFC) toolbox =========
 %
@@ -18,6 +18,7 @@ function [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub)
 %   tmfc.subjects.name     - Subject names within the TMFC project
 %   tmfc.project_path      - Path where all results will be saved
 %   tmfc.defaults.parallel - 0 or 1 (sequential or parallel computing)
+%   tmfc.defaults.headless - true or false (disable GUI and waitbars)
 %   tmfc.defaults.maxmem   - e.g. 2^31 = 2GB (how much RAM can be used)
 %   tmfc.defaults.resmem   - true or false (store temporary files in RAM)
 %   tmfc.defaults.analysis - 1 (Seed-to-voxel and ROI-to-ROI analyses)
@@ -146,13 +147,13 @@ function [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub)
 %   tmfc.ROI_set(1).ROIs(1).path_masked(1).subjects = '...\Subject_0001\ROI_1_masked.nii';
 %   tmfc.ROI_set(1).ROIs(1).path_masked(2).subjects = '...\Subject_0002\ROI_1_masked.nii';
 %
-% FORMAT [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub)
-% Run the function starting from a specific subject in the path list for
-% the selected ROI set.
+% FORMAT [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub,end_sub)
+% Process a specified range of subjects (inclusive).
 %
 %   tmfc           - As above
 %   ROI_set_number - Number of the ROI set in the tmfc structure
-%   start_sub      - Subject number in the list to start computations from
+%   start_sub      - First subject to process (default: 1)
+%   end_sub        - Last subject to process (default: last subject)
 %
 % =========================================================================
 % Copyright (C) 2026 Ruslan Masharipov
@@ -165,6 +166,12 @@ if nargin == 1
 elseif nargin == 2
    start_sub = 1;
 end
+
+% Headless mode (default: preserve GUI behavior)
+if ~isfield(tmfc.defaults,'headless')
+    tmfc.defaults.headless = false;
+end
+showGUI = ~tmfc.defaults.headless && usejava('desktop');
 
 % Check subject names
 if ~isfield(tmfc.subjects,'name')
@@ -181,13 +188,19 @@ else
 end
 
 nSub = length(tmfc.subjects);
+if nargin < 4 || isempty(end_sub)
+    end_sub = nSub;
+end
+validateattributes(start_sub,{'numeric'},{'scalar','integer','>=',1,'<=',nSub});
+validateattributes(end_sub,{'numeric'},{'scalar','integer','>=',start_sub,'<=',nSub});
+nSubRun = end_sub - start_sub + 1;
 nROI = length(tmfc.ROI_set(ROI_set_number).ROIs);
 cond_list = tmfc.ROI_set(ROI_set_number).gPPI.conditions;
 nCond = length(cond_list);
 
 sub_check = zeros(1,nSub);
-if start_sub > 1
-    sub_check(1:start_sub) = 1;
+if nargin < 4 && start_sub > 1
+    sub_check(1:start_sub) = 1; % Preserve legacy behavior
 end
 
 % Prepare gPPI folders
@@ -232,8 +245,6 @@ if tmfc.defaults.parallel==1 && hasPCT
         p = gcp('nocreate');
     end
     nW = p.NumWorkers;
-    nSubRun = nSub - start_sub + 1;
-
     % Single ROI, many subjects - parallelize over subjects.
     % Many ROIs - parallelize over ROIs
     if (nSubRun >= nW) && (nROI < nW)
@@ -243,30 +254,32 @@ if tmfc.defaults.parallel==1 && hasPCT
     end
 end
 
-try, figure(findobj('Tag','TMFC_GUI')); end
+% Initialize GUI progress reporting only in interactive mode
+D = [];
+if showGUI
+    try, figure(findobj('Tag','TMFC_GUI')); end
+    cleanupObj = onCleanup(@unfreeze_after_ctrl_c);
 
-% Initialize waitbar
-cleanupObj = onCleanup(@unfreeze_after_ctrl_c);
-
-if ~useParSub
-    w = waitbar(0,'Please wait...','Name','gPPI GLM estimation','Tag', 'tmfc_waitbar');
-    start_time = tic;
-    count_sub = 1;
-else
-    try % Waitbar for MATLAB R2017a and higher
-        D = parallel.pool.DataQueue;            
-        w = waitbar(0,'Please wait...','Name','gPPI GLM estimation','Tag','tmfc_waitbar');
-        afterEach(D, @tmfc_parfor_waitbar);     % Command to update waitbar
-        tmfc_parfor_waitbar(w,nSub,start_sub);
-    catch % No waitbar for MATLAB R2016b and earlier
-        D = [];
-        opts = struct('WindowStyle','non-modal','Interpreter','tex');
-        w = warndlg({'\fontsize{12}Sorry, waitbar progress update is not available for parallel computations in MATLAB R2016b and earlier.',[],...
-            'Please wait until all computations are completed.',[],...
-            'If you want to interrupt computations:',...
-            '   1) Do not close this window;',...
-            '   2) Select MATLAB main window;',...
-            '   3) Press Ctrl+C.'},'Please wait...',opts);
+    if ~useParSub
+        w = waitbar(0,'Please wait...','Name','gPPI GLM estimation','Tag', 'tmfc_waitbar');
+        start_time = tic;
+        count_sub = 1;
+    else
+        try % Waitbar for MATLAB R2017a and higher
+            D = parallel.pool.DataQueue;
+            w = waitbar(0,'Please wait...','Name','gPPI GLM estimation','Tag','tmfc_waitbar');
+            afterEach(D, @tmfc_parfor_waitbar);     % Command to update waitbar
+            tmfc_parfor_waitbar(w,nSubRun,1);
+        catch % No waitbar for MATLAB R2016b and earlier
+            D = [];
+            opts = struct('WindowStyle','non-modal','Interpreter','tex');
+            w = warndlg({'\fontsize{12}Sorry, waitbar progress update is not available for parallel computations in MATLAB R2016b and earlier.',[],...
+                'Please wait until all computations are completed.',[],...
+                'If you want to interrupt computations:',...
+                '   1) Do not close this window;',...
+                '   2) Select MATLAB main window;',...
+                '   3) Press Ctrl+C.'},'Please wait...',opts);
+        end
     end
 end
 
@@ -275,7 +288,7 @@ end
 % -------------------------------------------------------------------------
 if ~useParSub
     % ===================== Subjects: sequential ==========================    
-    for iSub = start_sub:nSub
+    for iSub = start_sub:end_sub
         %===================[ Specify gPPI GLM ]===========================
         SPM = load(tmfc.subjects(iSub).path).SPM;
 
@@ -629,6 +642,7 @@ if ~useParSub
         % ROI-to-ROI analysis only
         %------------------------------------------------------------------
         if tmfc.defaults.analysis == 2
+            % ROI-to-ROI analysis only 
             beta = [];
             if ~useParROI
                 for jROI = 1:nROI
@@ -751,20 +765,23 @@ if ~useParSub
         sub_check(iSub) = 1;
         
         % Update waitbar
-        elapsed_time = toc(start_time);
-        time_per_sub = elapsed_time/count_sub;
-        count_sub = count_sub + 1;
-        time_remaining = (nSub-iSub)*time_per_sub;
-        hms = fix(mod((time_remaining), [0, 3600, 60]) ./ [3600, 60, 1]);
-        try
-            waitbar(iSub/nSub, w, [num2str(iSub/nSub*100,'%.f') '%, ' num2str(hms(1),'%02.f') ':' num2str(hms(2),'%02.f') ':' num2str(hms(3),'%02.f') ' [hr:min:sec] remaining']);
+        if showGUI
+            elapsed_time = toc(start_time);
+            time_per_sub = elapsed_time/count_sub;
+            count_sub = count_sub + 1;
+            time_remaining = (end_sub-iSub)*time_per_sub;
+            hms = fix(mod((time_remaining), [0, 3600, 60]) ./ [3600, 60, 1]);
+            progress = (iSub-start_sub+1)/nSubRun;
+            try
+                waitbar(progress, w, [num2str(progress*100,'%.f') '%, ' num2str(hms(1),'%02.f') ':' num2str(hms(2),'%02.f') ':' num2str(hms(3),'%02.f') ' [hr:min:sec] remaining']);
+            end
         end
     
         clear SPM
     end
 else
     % ====================== Subjects: parallel ===========================
-    parfor iSub = start_sub:nSub
+    parfor iSub = start_sub:end_sub
 
         spm('defaults','fmri');
         spm_jobman('initcfg');
@@ -776,7 +793,9 @@ else
         ok = tmfc_gPPI_one_sub(tmfc,ROI_set_number,iSub,cond_list,nCond,nROI);
         sub_check(iSub) = ok;
 
-        try, send(D,[]); end
+        if showGUI
+            try, send(D,[]); end
+        end
     end
 end
 
@@ -803,8 +822,10 @@ for cond_PPI = 1:nCond
 end
 
 % Close waitbar
-try
-    delete(w);
+if showGUI
+    try
+        delete(w);
+    end
 end
 
 function unfreeze_after_ctrl_c()    
