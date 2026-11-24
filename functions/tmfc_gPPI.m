@@ -240,7 +240,7 @@ if tmfc.defaults.parallel==1 && hasPCT
         p = gcp('nocreate');
     end
     nW = p.NumWorkers;
-    % Single ROI, many subjects - parallelize over subjects.
+    % Single ROI, many subjects - parallelize over subjects
     % Many ROIs - parallelize over ROIs
     if (nSubRun >= nW) && (nROI < nW)
         useParSub = true;
