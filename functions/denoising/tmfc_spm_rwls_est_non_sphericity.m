@@ -1,9 +1,20 @@
-function [xVi, mask] = tmfc_spm_rwls_est_non_sphericity(SPM)
+function [xVi, mask] = tmfc_spm_rwls_est_non_sphericity(SPM,tmfc)
 
-% This is a copy of the original function from the rWLS toolbox v4.1
-% (Diedrichsen & Shadmehr, 2006). The function name has been prefixed with 
-% 'tmfc' to avoid conflicts if the original rWLS toolbox is already
-% on the MATLAB path.
+%--------------------------------------------------------------------------
+% Estimate temporal non-sphericity using ReML
+%--------------------------------------------------------------------------
+% This is an adaptation of the original function from the rWLS toolbox v4.1
+% (Diedrichsen & Shadmehr, 2006). It preserves rWLS estimation procedure 
+% but reads the voxel selection threshold and memory limit from
+% tmfc.defaults instead of SPM defaults.
+%
+% FORMAT [xVi, mask] = tmfc_spm_rwls_est_non_sphericity(SPM,tmfc)
+% SPM        - SPM GLM structure
+% tmfc       - TMFC configuration structure (defaults.ufp, defaults.maxmem)
+% xVi        - estimated non-sphericity structure
+% mask       - logical array of voxels within analysis mask
+%
+% Original documentation:
 %
 % Non-sphericity estimation using ReML
 % Modified version to allow for RWLS estimation (temporal non-stationarity
@@ -45,6 +56,12 @@ function [xVi, mask] = tmfc_spm_rwls_est_non_sphericity(SPM)
 % Copyright (C) 1994-2012 Wellcome Trust Centre for Neuroimaging
 % Karl Friston & Guillaume Flandin
 % Additons by Joern Diedrichsen
+%
+%
+% TMFC modifications:
+% Copyright (C) 2026 Ruslan Masharipov
+% License: GPL-3.0-or-later
+% Contact: masharipov@ihb.spb.ru
 
 
 SVNid = '$Rev: 4.0 $';
@@ -98,12 +115,12 @@ trRV         = spm_SpUtil('trRV',xX.xKXs);
 
 %-Threshold for voxels entering non-sphericity estimates
 %--------------------------------------------------------------------------
-try
-    modality = lower(spm_get_defaults('modality'));
-    UFp      = spm_get_defaults(['stats.' modality '.ufp']);
-catch
-    UFp      = 0.001;
+if ~isfield(tmfc.defaults,'ufp')
+    UFp = 1;
+else
+    UFp = tmfc.defaults.ufp;
 end
+
 xVi.UFp      = UFp;
 UF           = spm_invFcdf(1 - UFp,[trMV,trRV]);
 
@@ -112,8 +129,11 @@ UF           = spm_invFcdf(1 - UFp,[trMV,trRV]);
 if (isfield(xVi,'VM'));
     xVi.UFp      = nan;
     UF=0;
-    %xM.VM{end+1}= xVi.VM;       % Append to the normal analysis masks 
-    xM.VM(end+1)= xVi.VM;       % Append to the normal analysis masks 
+    if (isempty(xM.VM))
+        xM.VM = xVi.VM;       % Append to the normal analysis masks 
+    else 
+        xM.VM(end+1)= xVi.VM;       % Append to the normal analysis masks 
+    end; 
 end; 
 if (strcmp(xVi.form,'wls'))
     xVi.UFp      = inf;
@@ -148,11 +168,11 @@ Cm        = mask;                               %-mask of selected voxels
 
 %-Split data into chunks
 %==========================================================================
-chunksize = floor(spm_get_defaults('stats.maxmem') / 8 / nScan);
+chunksize = floor(tmfc.defaults.maxmem / 8 / nScan);
 nbchunks  = ceil(prod(DIM) / chunksize);
 chunks    = min(cumsum([1 repmat(chunksize,1,nbchunks)]),prod(DIM)+1);
 
-spm_progress_bar('Init',nbchunks,'Hyperparameter estimation','Chunks');
+%spm_progress_bar('Init',nbchunks,'Hyperparameter estimation','Chunks');
 
 for i=1:nbchunks
     chunk = chunks(i):chunks(i+1)-1;
@@ -212,11 +232,11 @@ for i=1:nbchunks
     %-Report progress
     %======================================================================
     fprintf('%s%30s',repmat(sprintf('\b'),1,30),'...done');             %-#
-    spm_progress_bar('Set',i);
+    %spm_progress_bar('Set',i);
 end
 
 fprintf('\n');                                                          %-#
-spm_progress_bar('Clear');
+%spm_progress_bar('Clear');
 
 s = nnz(Cm);                                    %-Number of selected voxels
 if ~s
@@ -300,10 +320,10 @@ if isstruct(xX.K)
 else
     % [ RWLS
     if (strncmp(xVi.form,'wls',3))
-        [Vp,hp]=tmfc_spm_rwls_reml(Cy(q,q),Xp,Qp);
-    else % RWLS END] 
+        [V,h] = tmfc_spm_rwls_reml(Cy,xX.X,xVi.Vi);
+    else % RWLS END]
         [V,h] = spm_reml(Cy,xX.X,xVi.Vi);
-    end;
+    end
 end
 
 %-Normalize non-sphericity and save hyperparameters

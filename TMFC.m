@@ -15,6 +15,9 @@ function TMFC
 %                           - 2 (ROI-to-ROI analysis only)
 %                           - 3 (Seed-to-voxel analysis only)
 %
+%   tmfc.defaults.headless  - true or false (disable GUI and waitbars)
+%   tmfc.defaults.ufp       - F-test p-value threshold for non-sphericity estimation
+%
 %   tmfc.session_mode       - 'strict' or 'repeated'
 %                             'strict'   - same number of runs with
 %                                          corresponding run-specific conditions
@@ -127,6 +130,8 @@ if isempty(findobj('Tag', 'TMFC_GUI'))
     tmfc.defaults.maxmem = 2^32;
     tmfc.defaults.resmem = true;
     tmfc.defaults.analysis = 1;
+    tmfc.defaults.ufp = 1;
+    tmfc.defaults.headless = false;
     
     % Main TMFC GUI
     main_GUI.TMFC_GUI = figure('Name',['TMFC toolbox ' localVer],'MenuBar', 'none', 'ToolBar', 'none','NumberTitle', 'off', 'Units', 'normalized', 'Position', [0.63 0.0875 0.250 0.850], 'color', 'w', 'Tag', 'TMFC_GUI');
@@ -2961,6 +2966,14 @@ function load_project_GUI(~,~,~)
     end
     if ~isfield(tmfc_new.defaults,'analysis')
         tmfc_new.defaults.analysis = 1;
+    end
+
+    if ~isfield(tmfc_new.defaults,'ufp')
+        tmfc_new.defaults.ufp = 1;
+    end
+
+    if ~isfield(tmfc_new.defaults,'headless')
+        tmfc_new.defaults.headless = false;
     end
 
     if ~isfield(tmfc_new,'session_mode') || isempty(tmfc_new.session_mode)

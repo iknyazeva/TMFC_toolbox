@@ -4,6 +4,8 @@ function VRes = tmfc_write_residuals(SPM,Ic)
 % Residual images are written in Float32 format instead of Float64 format
 % to save disk space and reduce computation time.
 %
+% Original documentation:
+%
 % Write residual images
 % FORMAT Vres = spm_write_residuals(SPM,Ic)
 % SPM    - structure containing generic analysis details
@@ -13,9 +15,15 @@ function VRes = tmfc_write_residuals(SPM,Ic)
 % VRes   - struct array of residual image handles
 %__________________________________________________________________________
 % Copyright (C) 2012-2013 Wellcome Trust Centre for Neuroimaging
-
+%
 % Guillaume Flandin
 % $Id: spm_write_residuals.m 6656 2015-12-24 16:49:52Z guillaume $
+%
+%
+% TMFC modifications:
+% Copyright (C) 2026 Ruslan Masharipov
+% License: GPL-3.0-or-later
+% Contact: masharipov@ihb.spb.ru
 
 
 %-Get SPM.mat

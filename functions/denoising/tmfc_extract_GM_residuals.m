@@ -1,30 +1,40 @@
 function GM_res = tmfc_extract_GM_residuals(SPM,GM_path,c)
 
-% This is a modification of the original 'spm_write_residuals' function.
-% Computes residuals within the selected gray-matter (GM) mask.
+% This is a modified version of the original SPM function
+% spm_write_residuals. It extracts residual time series within a specified
+% gray-matter (GM) mask and returns them as a matrix instead of writing
+% residual images. Contrast adjustment uses a TMFC-defined omnibus
+% F-contrast rather than a contrast index from SPM.xCon.
 %
-% Extract residuals within the GM mask.
-% FORMAT: GM_res = tmfc_extract_GM_residuals(SPM,GM_path,c)
-%
+% FORMAT GM_res = tmfc_extract_GM_residuals(SPM,GM_path,c)
 % SPM     - structure containing generic analysis details
-% GM_path - path to GM mask
-% c       - contrast weights to adjust data (0:   no adjustment)
-%                                           (1:   adjust for covariates)
-%                                           (NaN: adjust for everything) 
+% GM_path - path to the GM mask
+% c       - adjustment mode:
+%           0   - no adjustment
+%           1   - adjust for covariates using an omnibus F-contrast
+%           NaN - adjust for everything
 %
-% GM_res - matrix of GM residuals (time x voxel)  
+% GM_res  - matrix of GM residuals (time x voxel)
+%
+% Original SPM documentation:
+%
+% Write residual images
+% FORMAT Vres = spm_write_residuals(SPM,Ic)
+% SPM    - structure containing generic analysis details
+% Ic     - contrast index used to adjust data (0:   no adjustment)
+%                                             (NaN: adjust for everything) 
+%
+% VRes   - struct array of residual image handles
 %__________________________________________________________________________
-% spm_write_residuals:
-% Copyright (C) 2012-2013 Wellcome Trust Centre for Neuroimaging
-% Guillaume Flandin
-% $Id: spm_write_residuals.m 6656 2015-12-24 16:49:52Z guillaume $
 %
-% tmfc_extract_GM_residuals:
-% Copyright (C) 2025 Ruslan Masharipov
+% Guillaume Flandin
+% Copyright (C) 2012-2022 Wellcome Centre for Human Neuroimaging
+%
+%
+% TMFC modifications:
+% Copyright (C) 2026 Ruslan Masharipov
 % License: GPL-3.0-or-later
 % Contact: masharipov@ihb.spb.ru
-
-
 
 cwd = pwd; 
 cd(SPM.swd);
