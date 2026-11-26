@@ -115,10 +115,16 @@ trRV         = spm_SpUtil('trRV',xX.xKXs);
 
 %-Threshold for voxels entering non-sphericity estimates
 %--------------------------------------------------------------------------
-if ~isfield(tmfc.defaults,'ufp')
-    UFp = 1;
+if nargin < 2 || isempty(tmfc)
+    UFp = spm_get_defaults('stats.fmri.ufp');
+    maxmem = spm_get_defaults('stats.maxmem');
 else
-    UFp = tmfc.defaults.ufp;
+    if ~isfield(tmfc.defaults,'ufp')
+        UFp = 1;
+    else
+        UFp = tmfc.defaults.ufp;
+    end
+    maxmem = tmfc.defaults.maxmem;
 end
 
 xVi.UFp      = UFp;
@@ -168,7 +174,7 @@ Cm        = mask;                               %-mask of selected voxels
 
 %-Split data into chunks
 %==========================================================================
-chunksize = floor(tmfc.defaults.maxmem / 8 / nScan);
+chunksize = floor(maxmem / 8 / nScan);
 nbchunks  = ceil(prod(DIM) / chunksize);
 chunks    = min(cumsum([1 repmat(chunksize,1,nbchunks)]),prod(DIM)+1);
 

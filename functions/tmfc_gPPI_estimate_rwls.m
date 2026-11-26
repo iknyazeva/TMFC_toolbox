@@ -4,7 +4,7 @@ function pKX = tmfc_gPPI_estimate_rwls(SPM,beta_idx,beta_paths,tmfc)
 % Estimate gPPI GLM using rWLS and save selected PPI beta images
 %--------------------------------------------------------------------------
 % This is an adaptation of the original rWLS toolbox v4.1 function
-% spm_spm (Diedrichsen & Shadmehr, 2006).
+% spm_rwls_spm (Diedrichsen & Shadmehr, 2006).
 % It preserves the rWLS GLM estimation procedure but saves only selected
 % beta images, without residual images, smoothness estimates, or SPM.mat.
 %

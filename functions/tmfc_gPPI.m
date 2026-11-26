@@ -6,6 +6,10 @@ function [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub,end_sub
 % (ROI-to-ROI analysis) and connectivity images (seed-to-voxel analysis)
 % for each condition of interest.
 %
+% GLMs are specified and estimated in memory, avoiding redundant
+% computations and intermediate disk I/O. Only the beta images required
+% for gPPI analysis are estimated and saved.
+%
 % Note: If the original GLMs contain parametric modulators, temporal
 % derivatives, or dispersion derivatives, these will be included in the
 % gPPI GLMs. PPI regressors are added only for explicitly selected
@@ -20,7 +24,8 @@ function [sub_check,contrasts] = tmfc_gPPI(tmfc,ROI_set_number,start_sub,end_sub
 %   tmfc.defaults.parallel - 0 or 1 (sequential or parallel computing)
 %   tmfc.defaults.headless - true or false (disable GUI and waitbars)
 %   tmfc.defaults.maxmem   - e.g. 2^31 = 2GB (how much RAM can be used)
-%   tmfc.defaults.resmem   - true or false (store temporary files in RAM)
+%   tmfc.defaults.ufp      - F-test threshold for ReML voxel selection
+%
 %   tmfc.defaults.analysis - 1 (Seed-to-voxel and ROI-to-ROI analyses)
 %                          - 2 (ROI-to-ROI analysis only)
 %                          - 3 (Seed-to-voxel analysis only)

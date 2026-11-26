@@ -12,6 +12,10 @@ function [sub_check,contrasts] = tmfc_gPPI_FIR(tmfc,ROI_set_number,start_sub,end
 % conditions of no interest. The FIR model allows to model activations
 % with arbitrary hemodynamic response shapes.
 %
+% GLMs are specified and estimated in memory, avoiding redundant
+% computations and intermediate disk I/O. Only the beta images required
+% for gPPI analysis are estimated and saved.
+%
 % Note: gPPI-FIR uses FIR basis functions for psychological regressors. 
 % Therefore, temporal and dispersion derivative basis functions from the
 % original HRF model are not used in the gPPI-FIR GLM.
@@ -30,8 +34,8 @@ function [sub_check,contrasts] = tmfc_gPPI_FIR(tmfc,ROI_set_number,start_sub,end
 %   tmfc.defaults.parallel - 0 or 1 (sequential or parallel computing)
 %   tmfc.defaults.headless - true or false (disable GUI and waitbars)
 %   tmfc.defaults.maxmem   - e.g. 2^31 = 2GB (how much RAM can be used)
-%   tmfc.defaults.resmem   - true or false (store temporary files in RAM)
-%   tmfc.defaults.ufp      - Global F threshold for ReML (default: 1)
+%   tmfc.defaults.ufp      - F-test threshold for ReML voxel selection
+%   
 %   tmfc.defaults.analysis - 1 (Seed-to-voxel and ROI-to-ROI analyses)
 %                          - 2 (ROI-to-ROI analysis only)
 %                          - 3 (Seed-to-voxel analysis only)
