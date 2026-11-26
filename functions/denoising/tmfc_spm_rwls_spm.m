@@ -1,9 +1,19 @@
-function SPM = tmfc_spm_rwls_spm(SPM)
+function SPM = tmfc_spm_rwls_spm(SPM,tmfc)
 
-% This is a copy of the original function from the rWLS toolbox v4.1
-% (Diedrichsen & Shadmehr, 2006). The function name has been prefixed with 
-% 'tmfc' to avoid conflicts if the original rWLS toolbox is already
-% on the MATLAB path. 
+%--------------------------------------------------------------------------
+% Estimate a first-level GLM using robust weighted least squares (rWLS)
+%--------------------------------------------------------------------------
+% This is an adaptation of the original function from the rWLS toolbox v4.1
+% (Diedrichsen & Shadmehr, 2006). It preserves the original rWLS estimation
+% procedure but passes the TMFC configuration structure to
+% tmfc_spm_rwls_est_non_sphericity, which reads the voxel selection
+% threshold and memory limit from tmfc.defaults instead of SPM defaults.
+%
+% FORMAT SPM = tmfc_spm_rwls_spm(SPM,tmfc)
+% SPM        - SPM GLM structure
+% tmfc       - TMFC configuration structure (defaults.ufp, defaults.maxmem)
+%
+% Original documentation:
 %
 % [Re]ML Estimation of a General Linear Model
 % FORMAT [SPM] = tmfc_spm_rwls_spm(SPM)
@@ -280,10 +290,20 @@ function SPM = tmfc_spm_rwls_spm(SPM)
 % (1995) NeuroImage 2:173-181.
 %__________________________________________________________________________
 % Copyright (C) 1994-2014 Wellcome Trust Centre for Neuroimaging
-
+%
 % Karl Friston & Guillaume Flandin
 % $Id: spm_spm.m 6015 2014-05-23 15:46:19Z guillaume $
+%
+%
+%
+% TMFC modifications:
+% Copyright (C) 2026 Ruslan Masharipov
+% License: GPL-3.0-or-later
+% Contact: masharipov@ihb.spb.ru
 
+if nargin < 2
+    tmfc = [];
+end
 
 SVNid = '$Rev: 4.0$';
 
@@ -429,7 +449,7 @@ if ~isfield(xVi,'V')
     SPM.xY.VY  = VY;
     SPM.xM     = xM;
     SPM.xX.K   = xX.K;
-    [xVi, am]  = tmfc_spm_rwls_est_non_sphericity(SPM);
+    [xVi, am]  = tmfc_spm_rwls_est_non_sphericity(SPM,tmfc);
     % In RWLS we may want a mask for our covariance estimation, so do not
     % use for analysis 
     % mask       = mask & am;
@@ -560,7 +580,7 @@ chunksize = floor(spm_get_defaults('stats.maxmem') / 8 / nScan);
 nbchunks  = ceil(prod(DIM) / chunksize);
 chunks    = min(cumsum([1 repmat(chunksize,1,nbchunks)]),prod(DIM)+1);
 
-spm_progress_bar('Init',nbchunks,'Parameter estimation','Chunks');
+%spm_progress_bar('Init',nbchunks,'Parameter estimation','Chunks');
 
 for i=1:nbchunks
     chunk = chunks(i):chunks(i+1)-1;
@@ -648,11 +668,11 @@ for i=1:nbchunks
     %-Report progress
     %======================================================================
     fprintf('%s%30s',repmat(sprintf('\b'),1,30),'...done');             %-#
-    spm_progress_bar('Set',i);
+    %spm_progress_bar('Set',i);
 end
 
 fprintf('\n');                                                          %-#
-spm_progress_bar('Clear');
+%spm_progress_bar('Clear');
 
 if ~any(mask(:))
     error('Please check your data: There are no inmask voxels.');

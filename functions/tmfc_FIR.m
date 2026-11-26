@@ -306,7 +306,7 @@ switch tmfc.defaults.parallel
                 end
                 original_dir = pwd;
                 cd(fullfile(tmfc.project_path,'FIR_regression',tmfc.subjects(iSub).name));
-                tmfc_spm_rwls_spm(SPM);
+                tmfc_spm_rwls_spm(SPM,tmfc);
                 cd(original_dir);
             end
             tmfc_write_residuals(fullfile(tmfc.project_path,'FIR_regression',tmfc.subjects(iSub).name,'SPM.mat'),NaN);
@@ -361,7 +361,7 @@ function tmfc_rwls_FIR(tmfc,iSub)
     end
     original_dir = pwd;
     cd(fullfile(tmfc.project_path,'FIR_regression',tmfc.subjects(iSub).name));
-    tmfc_spm_rwls_spm(SPM);
+    tmfc_spm_rwls_spm(SPM,tmfc);
     cd(original_dir);
 end
 

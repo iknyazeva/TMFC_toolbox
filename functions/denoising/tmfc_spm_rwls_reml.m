@@ -6,6 +6,8 @@ function [C,h,Ph,F,Fa,Fc,k] = tmfc_spm_rwls_reml(YY,X,Q,N,hE,hC,A,K)
 % on the MATLAB path. 
 % Hyperpriors: hP changed from 1/256 tp 1/32 to improve rWLS estimation.
 %
+% Original documentation:
+%
 % ReML estimation of covariance components from y*y' 
 % Exploits special structure of first and second derivative for the
 % weighted regression model: The first m components are assumed to be 
@@ -19,9 +21,9 @@ function [C,h,Ph,F,Fa,Fc,k] = tmfc_spm_rwls_reml(YY,X,Q,N,hE,hC,A,K)
 % N   - number of samples
 %
 % hE  - hyperprior expectation in log-space [default = 0]
-% hC  - hyperprior covariance  in log-space [default = 256]
+% hC  - hyperprior covariance  in log-space [default = 256] (changed to 32)
 % A   - proportional hyperpriors [default = 0, yes]
-% K   - number of iterations [default = 32]
+% K   - number of iterations [default = 64]
 %
 % C   - (m x m) estimated errors = h(1)*Q{1} + h(2)*Q{2} + ...
 % h   - (q x 1) ReML hyperparameters h
@@ -54,12 +56,14 @@ function [C,h,Ph,F,Fa,Fc,k] = tmfc_spm_rwls_reml(YY,X,Q,N,hE,hC,A,K)
 %__________________________________________________________________________
 % 
 % 
-% 
-% 
-% 
- 
 % Joern Diedrichsen, Karl Friston 
 % $Id: spm_rwls_reml.m joern  $
+%
+%
+% TMFC modifications:
+% Copyright (C) 2026 Ruslan Masharipov
+% License: GPL-3.0-or-later
+% Contact: masharipov@ihb.spb.ru
 
 % assume proportional hyperpriors not specified
 %--------------------------------------------------------------------------
@@ -105,7 +109,6 @@ if A
         sh(i,1) = trace(R*Q{i})/n;
         Q{i}    = Q{i}/sh(i);
     end
-    keyboard; 
 else
     sY = 1;
     sh = 1;
@@ -160,12 +163,7 @@ for k = 1:K
  
     % Expected curvature E{dF/dhh} (second derivatives)
     %----------------------------------------------------------------------
-    dFdhh=-0.5*(P.*P');
- 
-    % Check if other components are present 
-    %----------------------------------------------------------------------
-    dFdhh=-0.5*(P.*P');
-    
+    dFdhh=-0.5*(P.*P');   
     
     % modulate
     %----------------------------------------------------------------------
